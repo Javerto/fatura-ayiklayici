@@ -1,0 +1,17 @@
+.env
+__pycache__/
+*.pyc
+gecmis.json
+islenmis_dosyalar.json
+*.xlsx
+dist/
+build/
+*.spec
+.claude/
+icon.ico
+build_output.txt
+.venv_build/
+test_icon.ico
+output.txt
+error.txt
+output2.txt
