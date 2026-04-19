@@ -56,7 +56,7 @@ Uygulamanın faturalardan hangi alanları çıkaracağını veya nasıl davranac
 Örneğin, sadece belirli ürün kalemlerini veya özel vergi kodlarını çekmek için promptu Türkçe olarak güncellemeniz yeterlidir.
 
 ### Model Seçimi
-Varsayılan olarak `gemini-1.5-flash` kullanılmaktadır. Daha yüksek doğruluk (ancak daha yavaş hız) için `extraction.py` içindeki `GEMMA_MODEL` değerini `gemini-1.5-pro` olarak değiştirebilirsiniz.
+Varsayılan olarak `gemma-4-31b-it` kullanılmaktadır. Daha yüksek doğruluk için `extraction.py` içindeki `GEMMA_MODEL` değerini değiştirebilirsiniz.
 
 ## 📂 Proje Yapısı
 - `main.py`: Uygulamanın giriş noktası.
