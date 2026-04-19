@@ -1,90 +1,69 @@
-# Fatura Ayıklayıcı
+# Fatura Ayıklayıcı (Invoice Extractor)
 
 Türkçe PDF ve XML e-faturalarından otomatik veri çıkarma uygulaması. Google Gemini AI kullanarak fatura bilgilerini okur ve düzenli bir Excel dosyasına aktarır.
 
-## Özellikler
+## 🚀 Özellikler
 
-- PDF faturalardan AI destekli veri okuma (Google Gemini)
-- XML e-fatura (UBL formatı) doğrudan ayrıştırma
-- Paralel PDF işleme (5 iş parçacığı)
-- Çıktı: Kaynak dosyalara tıklanabilir bağlantı içeren Excel
-- Daha önce işlenmiş faturaları atlama (artımlı çalışma)
-- Koyu/açık tema desteği
-- Kurulum gerektirmez: tek dosya EXE olarak dağıtılabilir
+- **Hibrid PDF İşleme:** Dijital PDF'lerde doğrudan metin üzerinden, taranmış (resim) PDF'lerde ise gelişmiş OCR (Vision) üzerinden veri ayıklar.
+- **XML Desteği:** UBL formatındaki e-faturaları (XML) doğrudan ve hatasız ayrıştırır.
+- **Yapay Zeka Gücü:** Veri çıkarma için Google'ın en yeni Gemini AI modellerini kullanır.
+- **Paralel İşleme:** PDF dosyalarını 5 iş parçacığı (thread) ile hızlıca işler.
+- **Akıllı Excel Çıktısı:** Kaynak dosyalara doğrudan tıklanabilir bağlantılar içeren, düzenli bir Excel tablosu oluşturur.
+- **Artımlı Çalışma:** Daha önce işlenmiş faturaları algılar ve atlar, sadece yeni eklenenleri işler.
+- **Modern Arayüz:** Catppuccin temalı, koyu ve açık mod desteği sunan kullanıcı dostu GUI.
 
-## Gereksinimler
+## 🛠️ Kurulum
 
-- Python 3.11+
-- Google Gemini API key ([aistudio.google.com](https://aistudio.google.com) adresinden ücretsiz alınabilir)
+### 1. Gereksinimler
+- Python 3.11 veya üzeri.
+- Google Gemini API Key ([Google AI Studio](https://aistudio.google.com/)'dan ücretsiz alabilirsiniz).
 
-## Kurulum
-
+### 2. Bağımlılıkları Yükleme
+Projeyi klonladıktan sonra terminalde şu komutu çalıştırın:
 ```bash
-pip install google-genai pymupdf python-dotenv openpyxl
+pip install -r requirements.txt
 ```
 
-## Kullanım
+### 3. Yapılandırma
+- Proje klasöründeki `.env.example` dosyasının adını `.env` olarak değiştirin.
+- İçindeki `GEMINI_API_KEY` kısmına kendi API anahtarınızı yapıştırın.
+*(Not: Uygulama ilk açılışta API key girilmemişse size otomatik olarak soracaktır).*
 
-### Geliştirme modunda çalıştırma
+## 📖 Kullanım
 
+### Geliştirme Modunda Çalıştırma
 ```bash
-# .env.example dosyasını kopyala ve API key'ini gir
-cp .env.example .env
-
 python main.py
 ```
 
-İlk çalıştırmada uygulama otomatik olarak API key girişi isteyecektir.
-
 ### Adımlar
+1. **Klasör Seç:** Faturalarınızın (PDF/XML) bulunduğu klasörü seçin.
+2. **Başlat:** İşlemi başlatın. Log ekranından hangi faturanın dijital, hangisinin OCR ile okunduğunu takip edebilirsiniz.
+3. **Excel'i Aç:** İşlem bittiğinde oluşan dosyayı tek tıkla açın.
 
-1. **Klasör seç** — PDF ve/veya XML faturalarının bulunduğu klasörü seç
-2. **Başlat** — İşlemi başlat; uygulama yeni faturaları otomatik algılar
-3. **Excel'i Aç** — Oluşturulan Excel dosyasını aç
-
-## EXE Derleme (Windows)
-
+### EXE Olarak Derleme (Windows)
+Uygulamayı kurulum gerektirmeyen tek bir `.exe` dosyasına dönüştürmek için:
 ```bash
 build.bat
 ```
+Çıktı `dist/` klasörü içinde oluşacaktır.
 
-Çıktı: `dist/FaturaAyiklayici.exe` (~41 MB, bağımlılık gerektirmez)
+## ⚙️ Özelleştirme
 
-> EXE modunda `.env` ve `gecmis.json` dosyaları `%APPDATA%\FaturaAyiklayici` klasörüne yazılır.
+### Prompt Güncelleme
+Uygulamanın faturalardan hangi alanları çıkaracağını veya nasıl davranacağını değiştirmek isterseniz `extraction.py` dosyasındaki `PROMPT_SABLON` değişkenini düzenleyebilirsiniz. 
 
-## Yapılandırma
+Örneğin, sadece belirli ürün kalemlerini veya özel vergi kodlarını çekmek için promptu Türkçe olarak güncellemeniz yeterlidir.
 
-`.env` dosyası (proje kök dizini veya EXE modunda AppData):
+### Model Seçimi
+Varsayılan olarak `gemini-1.5-flash` kullanılmaktadır. Daha yüksek doğruluk (ancak daha yavaş hız) için `extraction.py` içindeki `GEMMA_MODEL` değerini `gemini-1.5-pro` olarak değiştirebilirsiniz.
 
-```
-GEMINI_API_KEY=your_key_here
-TEMA=dark   # dark veya light
-```
+## 📂 Proje Yapısı
+- `main.py`: Uygulamanın giriş noktası.
+- `gui.py`: Tkinter arayüzü ve arka plan işleme mantığı.
+- `extraction.py`: AI ve XML tabanlı veri çıkarma motoru.
+- `excel_utils.py`: Excel raporlama ve dosya bağlantıları.
+- `build.bat`: Windows için derleme betiği.
 
-## Proje Yapısı
-
-```
-main.py          — Giriş noktası
-gui.py           — Tkinter arayüzü ve arka plan işleme
-extraction.py    — PDF/XML veri çıkarma ve doğrulama
-excel_utils.py   — Excel okuma/yazma
-build.bat        — EXE derleme scripti
-```
-
-## Teknik Detaylar
-
-| Ayar | Değer |
-|------|-------|
-| AI Modeli | `gemma-4-31b-it` (Google Gemini) |
-| Paralel iş parçacığı | 5 |
-| API istek limiti | 14 istek/dakika |
-| Zaman aşımı | 180 saniye |
-| Yeniden deneme | Maksimum 5 |
-
-## Ekran Görüntüsü
-
-> Uygulama Catppuccin Mocha (koyu) ve Catppuccin Latte (açık) tema desteği sunar.
-
-## Lisans
-
-MIT
+## 📜 Lisans
+Bu proje MIT lisansı ile lisanslanmıştır. Özgürce kullanabilir, değiştirebilir ve dağıtabilirsiniz.
