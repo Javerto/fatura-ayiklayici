@@ -59,7 +59,7 @@ class ExcelHatasi(Exception):
     """Excel kaydedilemedi."""
 # ─────────────────────────────────────────────────────────────────────────────
 
-PROMPT_SABLON = """Ekteki fatura görsellerini dikkatlice incele. Aşağıdaki alanları çıkar.
+PROMPT_SABLON = """Fatura verilerini (görsel veya metin) dikkatlice incele. Aşağıdaki alanları çıkar.
 SADECE geçerli JSON döndür, başka hiçbir şey yazma, kod bloğu kullanma.
 
 {
@@ -305,15 +305,39 @@ def xml_den_veri_cek(xml_yolu: str, pdf_yolu: str | None) -> dict:
     }
 
 
+def pdf_text_ayikla(dosya_yolu: str) -> str:
+    """PDF'den dijital metni ayıklar."""
+    try:
+        doc = fitz.open(dosya_yolu)
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+        return text.strip()
+    except Exception:
+        return ""
+
+
 def pdf_den_veri_cek(dosya_yolu: str, client, log_q: queue.Queue,
                      stop_event: threading.Event | None = None,
                      zoom: float = 1.5) -> dict:
-    """PDF sayfalarını görsel olarak AI'ya gönderir, JSON yanıtı döner."""
-    images = pdf_to_images(dosya_yolu, zoom)
-
+    """
+    Hibrid yöntem: Önce dijital metni çekmeyi dener, bulamazsa görsele başvurur.
+    """
+    # 1. Önce metin çıkarmayı dene
+    metin = pdf_text_ayikla(dosya_yolu)
+    
     parts = [PROMPT_SABLON]
-    for img_bytes in images:
-        parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+    is_digital = False
+    
+    if len(metin) > 100:  # Anlamlı bir metin varsa dijital kabul et
+        is_digital = True
+        parts.append(f"\n\nFatura Metni İçeriği:\n{metin}")
+    else:
+        # 2. Metin yoksa veya çok azsa görsele başvur (Fallback)
+        images = pdf_to_images(dosya_yolu, zoom)
+        for img_bytes in images:
+            parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
 
     think_cfg = None
     if THINKING_BUDGET == 0:
@@ -387,4 +411,5 @@ def pdf_den_veri_cek(dosya_yolu: str, client, log_q: queue.Queue,
     for alan in ("toplam_miktar", "kdv_haric_tutar", "vergiler_dahil_tutar", "sira_no"):
         veri[alan] = to_float(veri.get(alan))
     veri["dosya_yolu"] = str(pathlib.Path(dosya_yolu).resolve())
+    veri["_teknik_bilgi"] = "Dijital" if is_digital else "OCR"
     return veri

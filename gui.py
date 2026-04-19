@@ -186,7 +186,12 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         else:
             if not pdf_gecerli_mi(dosya):
                 return ("atla", (dosya_adi, "PDF açılamadı. Dosya bozuk veya şifreli olabilir."))
-            log("info", f"→  {dosya_adi[:60]}")
+            
+            # Önce metin kontrolü yapıp tipini belirleyelim (log için)
+            from extraction import pdf_text_ayikla
+            tip_etiketi = "Dijital" if len(pdf_text_ayikla(dosya)) > 100 else "OCR"
+            log("info", f"→  {dosya_adi[:50]:<51} ({tip_etiketi})")
+            
             try:
                 return ("ok", pdf_den_veri_cek(dosya, client, log_q, stop_event, zoom))
             except APIKeyHatasi as e:
