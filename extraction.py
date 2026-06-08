@@ -142,10 +142,45 @@ def _duzelt_fatura_no(fn: str) -> tuple[str, bool]:
     if len(fn) == 17 and re.match(r'^[A-Z0-9]{3}\d{14}$', fn):
         prefix = fn[:7]   # 3 harf + 4 haneli yıl
         seq    = fn[7:]   # 10 haneli sıra (1 fazla)
-        fixed  = prefix + seq.replace('0', '', 1)
-        if len(fixed) == 16:
-            return fixed, True
+        # Yalnızca baştan fazla 0 varsa temizle. Baştan sıfır yoksa hangi
+        # hanenin fazla olduğu belirsizdir; ortadaki meşru sıfırı silip
+        # numarayı bozmak yerine olduğu gibi bırakırız (veri_dogrula uyarır).
+        if seq.startswith('0'):
+            fixed = prefix + seq[1:]
+            if len(fixed) == 16:
+                return fixed, True
     return fn, False
+
+
+def _json_ayikla(cevap: str) -> dict:
+    """Model yanıtından JSON nesnesini çıkarır.
+
+    ``` kod bloklarını (json etiketli veya etiketsiz) ve JSON'ın etrafındaki
+    açıklama metnini tolere eder. Geçerli bir JSON *nesnesi* bulunamazsa
+    ModelHatasi fırlatır.
+    """
+    s = (cevap or "").strip()
+
+    # Varsa ``` ... ``` kod bloğunun içeriğini al (metnin neresinde olursa olsun)
+    fence = re.search(r"```(?:json)?\s*(.*?)```", s, re.DOTALL | re.IGNORECASE)
+    if fence:
+        s = fence.group(1).strip()
+
+    # Önce tüm metni dene; olmazsa ilk '{' ile son '}' arasını dene (prose sarmalı)
+    adaylar = [s]
+    ilk, son = s.find("{"), s.rfind("}")
+    if ilk != -1 and son > ilk:
+        adaylar.append(s[ilk:son + 1])
+
+    for aday in adaylar:
+        try:
+            veri = json.loads(aday)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(veri, dict):
+            return veri
+
+    raise ModelHatasi("Modelden geçersiz JSON yanıtı alındı. Dosya atlanıyor.")
 
 
 def veri_dogrula(veri: dict) -> list[str]:
@@ -265,8 +300,12 @@ def xml_den_veri_cek(xml_yolu: str, pdf_yolu: str | None) -> dict:
     tanim = None
     ilk_kalem = root.find("cac:InvoiceLine", NS)
     if ilk_kalem is not None:
-        desc_el = (ilk_kalem.find("cac:Item/cbc:Description", NS)
-                   or ilk_kalem.find("cac:Item/cbc:Name", NS))
+        # Not: Element üzerinde `A or B` kullanılamaz — çocuğu olmayan bir
+        # element (metni olsa bile) falsy değerlendirilir, bu yüzden açıkça
+        # `is None` kontrolü yapıyoruz.
+        desc_el = ilk_kalem.find("cac:Item/cbc:Description", NS)
+        if desc_el is None:
+            desc_el = ilk_kalem.find("cac:Item/cbc:Name", NS)
         if desc_el is not None and desc_el.text:
             tanim = desc_el.text.strip()
 
@@ -320,13 +359,16 @@ def pdf_text_ayikla(dosya_yolu: str) -> str:
 
 def pdf_den_veri_cek(dosya_yolu: str, client, log_q: queue.Queue,
                      stop_event: threading.Event | None = None,
-                     zoom: float = 1.5) -> dict:
+                     zoom: float = 1.5, metin: str | None = None) -> dict:
     """
     Hibrid yöntem: Önce dijital metni çekmeyi dener, bulamazsa görsele başvurur.
+
+    `metin` dışarıdan verilirse (çağıran zaten çıkarmışsa) tekrar çıkarılmaz.
     """
-    # 1. Önce metin çıkarmayı dene
-    metin = pdf_text_ayikla(dosya_yolu)
-    
+    # 1. Metin verilmediyse çıkar (verildiyse çift çıkarmayı önle)
+    if metin is None:
+        metin = pdf_text_ayikla(dosya_yolu)
+
     parts = [PROMPT_SABLON]
     is_digital = False
     
@@ -395,14 +437,7 @@ def pdf_den_veri_cek(dosya_yolu: str, client, log_q: queue.Queue,
                 "API istek limiti aşıldı. Birkaç dakika bekleyip tekrar başlatın.")
         raise son_hata
 
-    cevap = response.text.strip()
-    if cevap.startswith("```"):
-        cevap = cevap.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
-
-    try:
-        veri = json.loads(cevap)
-    except json.JSONDecodeError:
-        raise ModelHatasi("Modelden geçersiz JSON yanıtı alındı. Dosya atlanıyor.")
+    veri = _json_ayikla(response.text)
 
     raw_fn = str(veri.get("fatura_no") or "").strip()
     if raw_fn:

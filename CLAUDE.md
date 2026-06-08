@@ -16,13 +16,15 @@ Key characteristics:
 - **Language**: Turkish UI, logs, error messages, and commit messages
 - **Platform**: Windows (EXE built with PyInstaller)
 - **AI model**: Google Gemini (Gemma‑4‑31b‑it) via `google‑genai`
-- **File formats**: PDF (image‑based extraction), XML (UBL e‑invoice parsing)
+- **File formats**: PDF (hybrid: digital text first, OCR/image fallback), XML (UBL e‑invoice parsing)
 - **Output**: Excel with validation, warnings, and clickable file links
 
 ## Development Commands
 
 ### Dependencies
 ```bash
+pip install -r requirements.txt
+# veya tek tek:
 pip install google-genai pymupdf python-dotenv openpyxl
 ```
 
@@ -44,29 +46,38 @@ The batch script creates a clean virtual environment, installs dependencies, bui
 The resulting EXE is placed in `dist/FaturaAyiklayici.exe` (~41 MB). Configuration files (`.env`, `gecmis.json`) are stored in `%APPDATA%\FaturaAyiklayici` when running as EXE, otherwise in the project folder.
 
 ### Testing
-There are no automated test suites yet. The user expects both **visual testing** (run the GUI and verify UI behavior) and **unit testing** (mock tkinter imports and test logic). For unit tests, patch internal imports (e.g., `gui.pdf_den_veri_cek`, not `extraction.pdf_den_veri_cek`) because of intra‑module imports.
+A pytest suite lives in `tests/` (config in `pytest.ini`, `pythonpath = .`). Run it with:
+```bash
+python -m pytest          # tüm testler
+python -m pytest tests/test_xml.py -q   # tek dosya
+python -m pytest -k fatura_no           # isim filtresiyle
+```
+Coverage focuses on the pure, tkinter‑free logic: `_duzelt_fatura_no`, `_json_ayikla`, `to_float`, `tarih_parse`, `veri_dogrula`, the Excel URL/round‑trip helpers, `xml_den_veri_cek` (via `tests/fixtures/ornek_fatura.xml`), the Excel "Kaynak" column, and an end‑to‑end `worker` smoke test (XML‑only, `google.genai.Client` patched). `pytest.ini` filters third‑party `DeprecationWarning`s so output stays clean. The user also values **visual testing** — running the GUI to verify UI behavior. When testing code that does intra‑module imports, patch where the name is used (e.g. `worker.pdf_text_ayikla`), not where it is defined.
 
 ## Architecture
 
 ### Module Responsibilities
 - **`main.py`** – Entry point; creates tkinter root and launches the `App` class from `gui.py`.
-- **`gui.py`** – Tkinter interface and background worker thread. Handles folder selection, API‑key input, progress logging, and error display. Uses a queue to communicate with the worker.
+- **`gui.py`** – Tkinter interface only. Handles folder selection, API‑key input, progress logging, theming, and error display. Spawns the worker on a background thread and talks to it via a queue. **No extraction/Excel logic lives here** — it imports `worker` from `worker.py`.
+- **`worker.py`** – The background processing loop (`worker(...)`). UI‑independent pure logic: scans the folder, runs PDF tasks in a `ThreadPoolExecutor`, processes XML‑only files sequentially, writes Excel, and reports progress/results through the `log_q` queue and `stop_event`. Testable without tkinter.
 - **`extraction.py`** – Core data‑extraction logic. Contains:
-  - `pdf_den_veri_cek` – Converts PDF pages to images, sends them to Gemini, parses the JSON response.
+  - `pdf_den_veri_cek` – Hybrid extraction: uses the `metin` arg if the caller already extracted the digital text (avoids double work), otherwise calls `pdf_text_ayikla`. If the text is > 100 chars, sends the raw text to Gemini; otherwise falls back to JPEG images. Tags the result with `_teknik_bilgi` = `"Dijital"` or `"OCR"`.
+  - `pdf_text_ayikla` – Extracts the embedded digital text layer from a PDF (empty string if none).
+  - `_json_ayikla` – Robustly extracts a JSON object from the model reply, tolerating ``` fences and surrounding prose; raises `ModelHatasi` if no JSON object is found.
   - `xml_den_veri_cek` – Parses UBL XML invoices directly.
   - `veri_dogrula` – Validates extracted fields and returns a list of warnings.
   - Rate limiter (`_rpm_bekle`) – Ensures ≤ 14 requests per minute (Gemini free‑tier limit).
   - PDF image rendering with configurable zoom (1.0×–3.0×).
-- **`excel_utils.py`** – Reads/writes the output Excel file. Maintains a hidden column (O) with the full file path for robustness. Creates HYPERLINK formulas for PDF files, plain “XML” labels for XML files.
+- **`excel_utils.py`** – Reads/writes the output Excel file. Maintains a hidden column (O, col 15) with the full file path for robustness, and a visible "Kaynak" column (col 16) showing `Dijital`/`OCR`/`XML`. Creates HYPERLINK formulas for PDF files, plain “XML” labels for XML files. The hidden‑path column position is unchanged, so older Excel outputs remain readable.
 - **`build.bat`** – One‑click EXE build script.
 
 ### Configuration and State
-- **`.env`** – Contains `GEMINI_API_KEY`. In EXE mode this file is stored in `%APPDATA%\FaturaAyiklayici`.
+- **`.env`** – Contains `GEMINI_API_KEY` and `TEMA` (`dark`/`light`). In EXE mode this file is stored in `%APPDATA%\FaturaAyiklayici`. A `.env.example` template ships in the repo.
 - **`gecmis.json`** – Log of previous runs (folder, output file name, processed count, duration). Also stored in AppData when frozen.
 - **`faturalar.xlsx`** – Example output file (can be deleted).
 
 ### Constants & Settings (extraction.py)
-- `GEMMA_MODEL = "gemma-4-31b-it"`
+- `GEMMA_MODEL = "gemma-4-31b-it"` — **Doğrulanmalı:** bu model adının `google-genai` üzerinden gerçekten erişilebilir olduğundan emin olun (`client.models.list` veya küçük bir test çağrısıyla). Geçersizse tüm PDF çıkarmaları başarısız olur. Gemma modelleri JSON‑mode/`response_schema` desteklemediği için JSON güvenilirliği `_json_ayikla`'nın dayanıklı ayrıştırmasına dayanır.
 - `MAX_DENEME = 5` – Retry attempts for transient API errors.
 - `TIMEOUT_SANIYE = 180` – Request timeout.
 - `MAX_WORKERS = 5` – Parallel PDF processing threads.
@@ -77,7 +88,7 @@ There are no automated test suites yet. The user expects both **visual testing**
 1. User selects a folder containing PDF and/or XML files.
 2. Worker thread scans the folder, filters out already‑processed files (based on the existing Excel output).
 3. PDF files are processed in parallel (`ThreadPoolExecutor`); XML files are processed sequentially.
-4. Each PDF is converted to JPEG images (zoom factor configurable via the UI), sent to Gemini with a Turkish prompt, and the JSON response is parsed.
+4. Each PDF is processed with the hybrid method: if it has a usable digital text layer (> 100 chars) the text is sent to Gemini; otherwise it is rendered to JPEG images (zoom factor configurable via the UI) and sent as a vision request. The JSON response is parsed in both cases.
 5. XML files are parsed with `xml.etree.ElementTree` using UBL namespaces.
 6. Extracted data is validated (`veri_dogrula`); warnings are collected and shown at the end via a “⚠ Uyarılar” button.
 7. Validated rows are appended to the Excel file (existing rows are preserved).
@@ -85,22 +96,18 @@ There are no automated test suites yet. The user expects both **visual testing**
 
 ### Invoice‑Number Correction
 - Turkish e‑invoice standard: 3 uppercase letters/digits + 4‑digit year + 9‑digit sequence (16 characters total).
-- Gemini sometimes adds an extra zero, making 17 characters. `_duzelt_fatura_no` detects the pattern `[A‑Z0‑9]{3}\d{14}` and removes the first zero from the sequence part.
+- Gemini sometimes adds an extra **leading** zero to the sequence, making 17 characters. `_duzelt_fatura_no` detects the pattern `[A‑Z0‑9]{3}\d{14}` and strips a leading zero from the sequence part **only**. If the sequence has no leading zero, the number is left untouched (we don't guess which interior digit is extra — corrupting a valid number is worse than a warning).
 - The correction is applied automatically after both PDF and XML extraction; `veri_dogrula` warns if the length is still not 16.
 
 ## UI & Styling
 
-### Color Palette (Catppuccin Mocha)
-All UI elements must use these hex constants (defined at the top of `gui.py`):
-- `BG = "#1e1e2e"` – Window background
-- `MANTLE = "#181825"` – Popup background
-- `SURFACE = "#313244"` – Button background
-- `TEXT = "#cdd6f4"` – Primary text
-- `SUBTEXT = "#a6adc8"` – Secondary text
-- `BLUE = "#89b4fa"` – Headers, active elements
-- `GREEN = "#a6e3a1"` – Success messages
-- `RED = "#f38ba8"` – Errors
-- `OVERLAY = "#6c7086"` – Disabled state
+### Color Palette (Catppuccin – dual theme)
+The app ships **two palettes**: `_KARANLIK` (Catppuccin Mocha, dark) and `_AYDINLIK` (Catppuccin Latte, light). The active palette is exposed through **module‑level globals** (`BG`, `MANTLE`, `SURFACE`, `TEXT`, `SUBTEXT`, `BLUE`, `GREEN`, `RED`, `OVERLAY`), set by `_tema_uygula(karanlik: bool)`. Never hard‑code hex values in widgets — always read these globals so both themes work.
+
+- The user toggles theme via the `🌙/☀` button (`_tema_degistir`), which re‑applies the palette, rebuilds the UI (destroys and recreates all widgets), and persists the choice as `TEMA=dark|light` in `.env`.
+- `_tema_uygula` must be called **before** `_build_ui` (done in `__init__` after loading `.env`).
+
+Dark (Mocha) reference values: `BG=#1e1e2e`, `MANTLE=#181825`, `SURFACE=#313244`, `TEXT=#cdd6f4`, `SUBTEXT=#a6adc8`, `BLUE=#89b4fa`, `GREEN=#a6e3a1`, `RED=#f38ba8`, `OVERLAY=#6c7086`.
 
 ### Popup Design
 - **Never use `tkinter.OptionMenu`** – it crashes the application on double‑click in Windows. Instead, create a button that opens a `Toplevel` popup with a list of options (see `_kalite_popup` and `_ask_api_key_popup` for reference).
@@ -108,9 +115,11 @@ All UI elements must use these hex constants (defined at the top of `gui.py`):
 - Icons are embedded as base64‑encoded PNG (see `_ICON_B64` in `gui.py`).
 
 ### Widget Notes
-- The main window uses a `Text` widget for logging with colored tags (`"ok"`, `"warn"`, `"skip"`, `"info"`, `"critical"`).
-- A “Kalite/Zoom” button lets the user choose image zoom (1.0×, 1.5× default, 2.0×, 3.0×) for PDF extraction.
+- The main window uses a `Text` widget for logging with colored tags (`"ok"`, `"warn"`, `"skip"`, `"info"`, `"critical"`, `"done_ok"`).
+- A “Kalite/Zoom” button lets the user choose image zoom (1.0×, 1.5× default, 2.0×, 3.0×) for OCR fallback PDF extraction.
 - An “⚠ Uyarılar” button appears after processing if any validation warnings were collected, showing a scrollable list.
+- An “↺ Yeniden Dene” button re‑runs only the skipped files from the last run (`worker(..., retry_dosyalar=...)`).
+- A “📋 Geçmiş” button shows run history from `gecmis.json` (last 20 runs).
 
 ## Error Handling
 
@@ -118,6 +127,7 @@ All UI elements must use these hex constants (defined at the top of `gui.py`):
 - `APIKeyHatasi` – Invalid/missing API key; stops the entire job.
 - `InternetHatasi` – Connection/rate‑limit issues; skips the current file.
 - `PDFHatasi` / `XMLHatasi` – Corrupted or unreadable file; skips the file.
+- `ModelHatasi` – Invalid/unparseable JSON response from the AI model; skips the file.
 - `ExcelHatasi` – Permission error when saving Excel; warns but continues.
 
 ### Retry Logic

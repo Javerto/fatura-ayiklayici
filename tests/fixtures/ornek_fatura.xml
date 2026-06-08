@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+  <cbc:ID>GIB2024000000123</cbc:ID>
+  <cbc:IssueDate>2024-03-15</cbc:IssueDate>
+  <cbc:Note>Bu fatura Yerli Liste 5 sirasinda KDV istisnasi kapsamindadir.</cbc:Note>
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyName><cbc:Name>ACME Bilisim A.S.</cbc:Name></cac:PartyName>
+      <cac:PartyTaxScheme>
+        <cbc:CompanyID>1234567890</cbc:CompanyID>
+        <cac:TaxScheme><cbc:Name>Buyuk Mukellefler</cbc:Name></cac:TaxScheme>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+  <cac:LegalMonetaryTotal>
+    <cbc:TaxExclusiveAmount currencyID="TRY">1000.00</cbc:TaxExclusiveAmount>
+    <cbc:PayableAmount currencyID="TRY">1180.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+  <cac:InvoiceLine>
+    <cbc:InvoicedQuantity>2</cbc:InvoicedQuantity>
+    <cac:Item><cbc:Description>Yazilim lisansi</cbc:Description></cac:Item>
+  </cac:InvoiceLine>
+  <cac:InvoiceLine>
+    <cbc:InvoicedQuantity>3</cbc:InvoicedQuantity>
+    <cac:Item><cbc:Name>Destek hizmeti</cbc:Name></cac:Item>
+  </cac:InvoiceLine>
+</Invoice>

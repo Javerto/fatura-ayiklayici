@@ -26,6 +26,7 @@ SUTUN = {
     "vergi_dairesi":        13,
     "dosya":                14,
     "dosya_yolu_gizli":     15,
+    "kaynak":               16,
 }
 
 
@@ -72,10 +73,11 @@ def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
     ws = wb.active
     satirlar, islenenmis = [], set()
 
-    for row in ws.iter_rows(min_row=2, max_col=SUTUN["dosya_yolu_gizli"]):
+    for row in ws.iter_rows(min_row=2, max_col=SUTUN["kaynak"]):
         b_val = row[SUTUN["fatura_no"] - 1].value
         if not b_val or str(b_val).strip().upper() == "TOPLAM":
             continue
+        kaynak_val = row[SUTUN["kaynak"] - 1].value
         s = {
             "fatura_no":            row[SUTUN["fatura_no"] - 1].value,
             "fatura_tarihi":        row[SUTUN["fatura_tarihi"] - 1].value,
@@ -88,6 +90,7 @@ def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
             "sirket_adi":           row[SUTUN["sirket_adi"] - 1].value,
             "vkn":                  row[SUTUN["vkn"] - 1].value,
             "vergi_dairesi":        row[SUTUN["vergi_dairesi"] - 1].value,
+            "_teknik_bilgi":        str(kaynak_val).strip() if kaynak_val else "",
         }
         n_cell     = row[SUTUN["dosya"] - 1]
         gizli_cell = row[SUTUN["dosya_yolu_gizli"] - 1]
@@ -140,6 +143,9 @@ def excel_olustur(satirlar: list, cikti: str):
     for col, (baslik, _) in enumerate(sutunlar, 1):
         c = ws.cell(row=1, column=col, value=baslik)
         c.font, c.fill, c.alignment, c.border = baslik_font, baslik_fill, orta, kenar
+    # Kaynak başlığı (gizli yol sütunundan sonra, sütun 16)
+    kc = ws.cell(row=1, column=SUTUN["kaynak"], value="Kaynak")
+    kc.font, kc.fill, kc.alignment, kc.border = baslik_font, baslik_fill, orta, kenar
     ws.row_dimensions[1].height = 30
 
     gizli_harf = get_column_letter(SUTUN["dosya_yolu_gizli"])
@@ -212,8 +218,18 @@ def excel_olustur(satirlar: list, cikti: str):
         gc.font = Font(name="Arial", size=1, color="FFFFFF")  # beyaz, 1pt — görünmez
         gc.alignment = Alignment(horizontal="center", vertical="center")
 
+        # Kaynak sütunu: Dijital / OCR (PDF) veya XML
+        kaynak = s.get("_teknik_bilgi") or \
+            ("XML" if dosya_yolu.lower().endswith(".xml") else "")
+        kc = ws.cell(row=ri, column=SUTUN["kaynak"], value=kaynak)
+        kc.font, kc.border = f10, kenar
+        kc.alignment = Alignment(horizontal="center", vertical="center")
+        if zebra:
+            kc.fill = zebra
+
     for col, (_, w) in enumerate(sutunlar, 1):
         ws.column_dimensions[get_column_letter(col)].width = w
+    ws.column_dimensions[get_column_letter(SUTUN["kaynak"])].width = 9
     ws.column_dimensions[gizli_harf].hidden = True
 
     sr = len(satirlar) + 2
@@ -231,6 +247,8 @@ def excel_olustur(satirlar: list, cikti: str):
     for col in range(1, 15):
         c = ws.cell(row=sr, column=col)
         c.border, c.fill = kenar, toplam_fill
+    tc = ws.cell(row=sr, column=SUTUN["kaynak"])
+    tc.border, tc.fill = kenar, toplam_fill
 
     try:
         wb.save(cikti)

@@ -1,0 +1,65 @@
+"""worker — uçtan uca işleme döngüsü (XML-only, AI gerektirmez).
+
+Bu test worker'ın gui'den ayrılması (refactor) sırasında davranışın
+korunduğunu garanti eder ve worker döngüsünün tek entegrasyon testidir.
+"""
+
+import pathlib
+import queue
+import shutil
+import threading
+
+import pytest
+
+# worker'ın bulunduğu modül (taşıma sonrası 'worker' modülü)
+from worker import worker
+
+FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "ornek_fatura.xml"
+
+
+@pytest.fixture(autouse=True)
+def sahte_genai_client(monkeypatch):
+    """genai.Client'ı ağ çağrısı yapmadan oluştur (XML için kullanılmaz)."""
+    import google.genai
+    monkeypatch.setattr(google.genai, "Client", lambda **kw: object())
+
+
+def _kuyrugu_bosalt(log_q):
+    mesajlar = []
+    while True:
+        try:
+            mesajlar.append(log_q.get_nowait())
+        except queue.Empty:
+            return mesajlar
+
+
+def test_worker_xml_only_excel_olusturur(tmp_path):
+    shutil.copy(FIXTURE, tmp_path / "fatura1.xml")
+    log_q = queue.Queue()
+    stop = threading.Event()
+
+    worker("FAKE_KEY", str(tmp_path), "cikti.xlsx", log_q, stop)
+
+    cikti = tmp_path / "cikti.xlsx"
+    assert cikti.exists()
+
+    mesajlar = _kuyrugu_bosalt(log_q)
+    tags = [t for t, _ in mesajlar]
+    assert "done" in tags
+
+    # done payload: (atlanmis, yeni, uyarilar) — 1 fatura işlenmiş olmalı
+    done = next(d for t, d in mesajlar if t == "done")
+    atlanmis, yeni, _uyarilar = done
+    assert yeni == 1
+    assert atlanmis == []
+
+
+def test_worker_bos_klasor_uyari_verir(tmp_path):
+    log_q = queue.Queue()
+    stop = threading.Event()
+
+    worker("FAKE_KEY", str(tmp_path), "cikti.xlsx", log_q, stop)
+
+    mesajlar = _kuyrugu_bosalt(log_q)
+    tags = [t for t, _ in mesajlar]
+    assert "critical" in tags  # "işlenecek PDF veya XML yok"
