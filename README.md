@@ -60,9 +60,11 @@ Varsayılan olarak `gemma-4-31b-it` kullanılmaktadır. Daha yüksek doğruluk i
 
 ## 📂 Proje Yapısı
 - `main.py`: Uygulamanın giriş noktası.
-- `gui.py`: Tkinter arayüzü ve arka plan işleme mantığı.
+- `gui.py`: Tkinter arayüzü (yalnızca UI).
+- `worker.py`: Arka plan işleme döngüsü (UI'dan bağımsız iş mantığı).
 - `extraction.py`: AI ve XML tabanlı veri çıkarma motoru.
 - `excel_utils.py`: Excel raporlama ve dosya bağlantıları.
+- `tests/`: pytest test paketi (`python -m pytest`).
 - `build.bat`: Windows için derleme betiği.
 
 ## 📜 Lisans
