@@ -53,3 +53,28 @@ def test_uygula_orijinal_satiri_bozmaz():
     row = {"fatura_no": "ESKI"}
     form_satira_uygula(row, {**_bos_form(), "fatura_no": "YENI"})
     assert row["fatura_no"] == "ESKI"        # kopya döner, mutasyon yok
+
+
+from review import nihai_satirlar
+from extraction import veri_dogrula
+
+
+def test_nihai_satirlar_haric_tutulanlari_cikarir():
+    mevcut = [{"fatura_no": "M"}]
+    yeni = [{"fatura_no": "A"}, {"fatura_no": "B"}, {"fatura_no": "C"}]
+    sonuc = nihai_satirlar(mevcut, yeni, {1})
+    assert [s["fatura_no"] for s in sonuc] == ["M", "A", "C"]
+
+
+def test_nihai_satirlar_bos_haric():
+    assert nihai_satirlar([], [{"x": 1}], set()) == [{"x": 1}]
+
+
+def test_revalidation_kapanisi_vkn_duzeltince_uyari_kalkar():
+    row = {"fatura_no": "GIB2024123456789", "vergiler_dahil_tutar": 100.0,
+           "para_birimi": "TL", "sirket_adi": "ACME",
+           "fatura_tarihi": datetime(2024, 1, 1), "vkn": "123"}
+    assert any("VKN" in u for u in veri_dogrula(row))
+    duzeltilmis = form_satira_uygula(
+        row, {**satir_form_degerleri(row), "vkn": "1234567890"})
+    assert not any("VKN" in u for u in veri_dogrula(duzeltilmis))

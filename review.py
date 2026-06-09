@@ -36,6 +36,12 @@ def satir_form_degerleri(row: dict) -> dict:
             for anahtar, _, _ in DUZENLENEBILIR_ALANLAR}
 
 
+def nihai_satirlar(mevcut: list, yeni: list, haric: set) -> list:
+    """Excel'e yazılacak nihai liste: mevcut satırlar + hariç tutulmayan yeniler."""
+    dahil = [s for i, s in enumerate(yeni) if i not in haric]
+    return list(mevcut) + dahil
+
+
 def form_satira_uygula(row: dict, form: dict) -> dict:
     """Form metinlerini tiplerine göre çevirip güncellenmiş satır KOPYASI döndürür.
 
