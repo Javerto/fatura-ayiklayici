@@ -36,7 +36,7 @@ class ReviewWindow:
         self.uyari = [veri_dogrula(s) for s in self.yeni]
         self.form_vars = {}
 
-        # önizleme durumu (Task 6'da kullanılır)
+        # önizleme durumu
         self._pdf_doc = None
         self._pdf_yol = None
         self._tk_img = None
@@ -256,7 +256,7 @@ class ReviewWindow:
         self.dis_ac_btn = tk.Button(kontrol, text="Dışarıda Aç",
                                     command=self._disarida_ac, bg=p["SURFACE"],
                                     fg=p["BLUE"], relief="flat", padx=8,
-                                    cursor="hand2")
+                                    cursor="hand2", state="disabled")
         self.dis_ac_btn.pack(side="right", padx=2)
 
     def _onizleme_yukle(self, yol):
@@ -286,6 +286,11 @@ class ReviewWindow:
         if self._pdf_doc is None:
             return
         n = self._pdf_doc.page_count
+        if n <= 0:
+            self.onizleme_label.config(image="", text="Önizleme yüklenemedi")
+            self._tk_img = None
+            self.sayfa_label.config(text="")
+            return
         self.sayfa = max(0, min(self.sayfa, n - 1))
         try:
             pix = self._pdf_doc[self.sayfa].get_pixmap(
@@ -299,7 +304,7 @@ class ReviewWindow:
         self.sayfa_label.config(text=f"sayfa {self.sayfa + 1} / {n}")
 
     def _zoom_degistir(self, d):
-        self.zoom = max(0.5, min(4.0, self.zoom + d))
+        self.zoom = max(0.5, min(3.0, self.zoom + d))
         self._sayfayi_ciz()
 
     def _sayfa_degistir(self, d):
@@ -310,7 +315,11 @@ class ReviewWindow:
 
     def _disarida_ac(self):
         if self._pdf_yol and os.path.exists(self._pdf_yol):
-            os.startfile(self._pdf_yol)
+            try:
+                os.startfile(self._pdf_yol)
+            except OSError as e:
+                messagebox.showerror("Hata", f"Dosya açılamadı:\n{e}",
+                                     parent=self.win)
 
     # ── Onay / İptal ──
     def _onayla(self):
