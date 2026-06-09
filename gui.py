@@ -666,6 +666,7 @@ class App:
 
     def _review_ac(self, payload):
         self._review_payload = payload
+        self.btn_stop.config(state="disabled")   # worker bitti, durdurulamaz
         karanlik = (BG == _KARANLIK["BG"])
         palet = {"BG": BG, "MANTLE": MANTLE, "SURFACE": SURFACE, "TEXT": TEXT,
                  "SUBTEXT": SUBTEXT, "BLUE": BLUE, "GREEN": GREEN, "RED": RED,
@@ -677,6 +678,11 @@ class App:
 
     def _review_onayla(self, nihai, guncel_uyarilar):
         payload = self._review_payload
+        if len(nihai) == len(payload["mevcut"]):
+            # Tüm yeni faturalar hariç tutuldu — Excel'e dokunma (spec)
+            self._log("info", "Tüm yeni faturalar hariç tutuldu, Excel'e dokunulmadı.")
+            self._islem_bitti(payload["atlanmis"], 0, guncel_uyarilar)
+            return True
         try:
             excel_olustur(nihai, payload["cikti"])
         except ExcelHatasi as e:
