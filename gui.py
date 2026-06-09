@@ -9,6 +9,8 @@ from dotenv import load_dotenv, set_key
 import os, pathlib, sys, threading, queue, time
 
 from worker import worker
+from review_ui import ReviewWindow
+from excel_utils import excel_olustur, ExcelHatasi
 
 # EXE modunda .env ve gecmis.json AppData'ya yazılır (kullanıcı görmez/silemez).
 # Geliştirme modunda proje klasörüne yazılır.
@@ -623,23 +625,10 @@ class App:
 
                 elif tag == "done":
                     atlanmis, islenen, uyarilar = data
-                    self._atlanmis = atlanmis
-                    self._uyarilar = uyarilar
-                    self._gecmis_kaydet(islenen, len(atlanmis))
-                    self.btn_start.config(state="normal")
-                    self.btn_stop.config(state="disabled")
-                    self.btn_tema.config(state="normal")
-                    if self.son_cikti and os.path.exists(self.son_cikti):
-                        self.btn_excel.config(state="normal")
-                    if atlanmis:
-                        self.btn_retry.config(state="normal",
-                            text=f"↺ Yeniden Dene ({len(atlanmis)})")
-                    if uyarilar:
-                        toplam_u = sum(len(u) for _, u in uyarilar)
-                        self.btn_uyari.config(state="normal",
-                            text=f"⚠ Uyarılar ({toplam_u})")
-                    else:
-                        self.btn_uyari.config(state="disabled", text="⚠ Uyarılar")
+                    self._islem_bitti(atlanmis, islenen, uyarilar)
+
+                elif tag == "review":
+                    self._review_ac(data)
 
                 elif tag == "critical":
                     self._log("critical", f"🛑 {data}")
@@ -654,6 +643,56 @@ class App:
         except queue.Empty:
             pass
         self.root.after(100, self._poll_queue)
+
+    # ── İşlem sonu ve onay penceresi ───────────────────────────────────
+    def _islem_bitti(self, atlanmis, islenen, uyarilar):
+        self._atlanmis = atlanmis
+        self._uyarilar = uyarilar
+        self._gecmis_kaydet(islenen, len(atlanmis))
+        self.btn_start.config(state="normal")
+        self.btn_stop.config(state="disabled")
+        self.btn_tema.config(state="normal")
+        if self.son_cikti and os.path.exists(self.son_cikti):
+            self.btn_excel.config(state="normal")
+        if atlanmis:
+            self.btn_retry.config(state="normal",
+                                  text=f"↺ Yeniden Dene ({len(atlanmis)})")
+        if uyarilar:
+            toplam_u = sum(len(u) for _, u in uyarilar)
+            self.btn_uyari.config(state="normal", text=f"⚠ Uyarılar ({toplam_u})")
+        else:
+            self.btn_uyari.config(state="disabled", text="⚠ Uyarılar")
+
+    def _review_ac(self, payload):
+        self._review_payload = payload
+        karanlik = (BG == _KARANLIK["BG"])
+        palet = {"BG": BG, "MANTLE": MANTLE, "SURFACE": SURFACE, "TEXT": TEXT,
+                 "SUBTEXT": SUBTEXT, "BLUE": BLUE, "GREEN": GREEN, "RED": RED,
+                 "OVERLAY": OVERLAY,
+                 "WARNING_BG": "#3a3a2a" if karanlik else "#fdf2c2",
+                 "WARNING_FG": "#f9e2af" if karanlik else "#8a6500"}
+        ReviewWindow(self.root, payload, palet,
+                     self._review_onayla, self._review_iptal)
+
+    def _review_onayla(self, nihai, guncel_uyarilar):
+        payload = self._review_payload
+        try:
+            excel_olustur(nihai, payload["cikti"])
+        except ExcelHatasi as e:
+            messagebox.showerror("Excel kaydedilemedi", str(e))
+            return False
+        self.son_cikti = payload["cikti"]
+        yazilan = len(nihai) - len(payload["mevcut"])
+        self._log("done_ok",
+                  f"Excel oluşturuldu: {payload['cikti']}  "
+                  f"({len(nihai)} fatura, {yazilan} yeni)")
+        self._islem_bitti(payload["atlanmis"], yazilan, guncel_uyarilar)
+        return True
+
+    def _review_iptal(self):
+        payload = self._review_payload
+        self._log("info", "İşlem iptal edildi, hiçbir şey kaydedilmedi.")
+        self._islem_bitti(payload["atlanmis"], 0, [])
 
     # ── Log yardımcıları ───────────────────────────────────────────────
     def _log(self, tag: str, mesaj: str):
