@@ -34,3 +34,21 @@ def satir_form_degerleri(row: dict) -> dict:
     """Satırı, form alanlarına yazılacak metin değerlerine çevirir."""
     return {anahtar: _metin(row.get(anahtar))
             for anahtar, _, _ in DUZENLENEBILIR_ALANLAR}
+
+
+def form_satira_uygula(row: dict, form: dict) -> dict:
+    """Form metinlerini tiplerine göre çevirip güncellenmiş satır KOPYASI döndürür.
+
+    'sayi'  → to_float, 'tarih' → tarih_parse, 'metin' → strip (boşsa None).
+    Düzenlenmeyen alanlar (dosya_yolu, _teknik_bilgi) korunur.
+    """
+    yeni = dict(row)
+    for anahtar, _, tip in DUZENLENEBILIR_ALANLAR:
+        ham = (form.get(anahtar) or "").strip()
+        if tip == "sayi":
+            yeni[anahtar] = to_float(ham) if ham else None
+        elif tip == "tarih":
+            yeni[anahtar] = tarih_parse(ham) if ham else None
+        else:
+            yeni[anahtar] = ham or None
+    return yeni
