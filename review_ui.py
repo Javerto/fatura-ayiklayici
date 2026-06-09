@@ -75,7 +75,8 @@ class ReviewWindow:
                         ("uyari", "⚠", 40)]:
             self.tree.heading(k, text=b)
             self.tree.column(k, width=w, anchor="w")
-        self.tree.tag_configure("uyari", background="#3a3a2a", foreground="#f9e2af")
+        self.tree.tag_configure("uyari", background=p.get("WARNING_BG", "#3a3a2a"),
+                                foreground=p.get("WARNING_FG", "#f9e2af"))
         self.tree.tag_configure("haric", foreground=p["OVERLAY"])
         sb = ttk.Scrollbar(tablo_frame, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=sb.set)
@@ -245,7 +246,8 @@ class ReviewWindow:
                     if i not in self.haric and self.uyari[i])
         if kalan and not messagebox.askyesno(
                 "Uyarılar var",
-                f"{kalan} faturada hâlâ uyarı var. Yine de Excel'e yazılsın mı?"):
+                f"{kalan} faturada hâlâ uyarı var. Yine de Excel'e yazılsın mı?",
+                parent=self.win):
             return
         nihai = nihai_satirlar(self.mevcut, self.yeni, self.haric)
         guncel_uyarilar = [
@@ -258,6 +260,7 @@ class ReviewWindow:
     def _iptal(self):
         if messagebox.askyesno(
                 "İptal",
-                "Çıkarılan veriler ve düzeltmeler kaydedilmeyecek. Emin misiniz?"):
+                "Çıkarılan veriler ve düzeltmeler kaydedilmeyecek. Emin misiniz?",
+                parent=self.win):
             self.win.destroy()
             self.on_cancel()
