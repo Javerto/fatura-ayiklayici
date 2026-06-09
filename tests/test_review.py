@@ -1,9 +1,9 @@
 """review.py saf mantık testleri."""
 from datetime import datetime
 
-import pytest
-
-from review import (DUZENLENEBILIR_ALANLAR, satir_form_degerleri)
+from extraction import veri_dogrula
+from review import (DUZENLENEBILIR_ALANLAR, satir_form_degerleri,
+                    form_satira_uygula, nihai_satirlar)
 
 
 def test_form_degerleri_tarih_ve_sayi_metne_cevrilir():
@@ -22,9 +22,6 @@ def test_form_degerleri_tum_alanlar_string_ve_eksiksiz():
     f = satir_form_degerleri({})
     assert set(f.keys()) == {a for a, _, _ in DUZENLENEBILIR_ALANLAR}
     assert all(isinstance(v, str) for v in f.values())
-
-
-from review import form_satira_uygula
 
 
 def _bos_form():
@@ -53,10 +50,6 @@ def test_uygula_orijinal_satiri_bozmaz():
     row = {"fatura_no": "ESKI"}
     form_satira_uygula(row, {**_bos_form(), "fatura_no": "YENI"})
     assert row["fatura_no"] == "ESKI"        # kopya döner, mutasyon yok
-
-
-from review import nihai_satirlar
-from extraction import veri_dogrula
 
 
 def test_nihai_satirlar_haric_tutulanlari_cikarir():
