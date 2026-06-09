@@ -230,15 +230,87 @@ class ReviewWindow:
                 self._sec(j)
                 return
 
-    # ── Önizleme (Task 6'da gerçek render ile değiştirilecek) ──
+    # ── Önizleme (gömülü PDF render) ──
     def _onizleme_kur(self):
+        p = self.p
         self.onizleme_label = tk.Label(self.onizleme_frame, text="Önizleme yok",
-                                       bg=self.p["MANTLE"], fg=self.p["SUBTEXT"])
+                                       bg=p["MANTLE"], fg=p["SUBTEXT"])
         self.onizleme_label.pack(fill="both", expand=True)
+        kontrol = tk.Frame(self.onizleme_frame, bg=p["MANTLE"])
+        kontrol.pack(fill="x", pady=(6, 0))
+        tk.Button(kontrol, text="−", command=lambda: self._zoom_degistir(-0.5),
+                  bg=p["SURFACE"], fg=p["TEXT"], relief="flat", width=3,
+                  cursor="hand2").pack(side="left", padx=2)
+        tk.Button(kontrol, text="+", command=lambda: self._zoom_degistir(0.5),
+                  bg=p["SURFACE"], fg=p["TEXT"], relief="flat", width=3,
+                  cursor="hand2").pack(side="left", padx=2)
+        self.sayfa_label = tk.Label(kontrol, text="", bg=p["MANTLE"],
+                                    fg=p["SUBTEXT"], font=("Arial", 8))
+        self.sayfa_label.pack(side="left", padx=8)
+        tk.Button(kontrol, text="◀", command=lambda: self._sayfa_degistir(-1),
+                  bg=p["SURFACE"], fg=p["TEXT"], relief="flat", width=3,
+                  cursor="hand2").pack(side="left", padx=2)
+        tk.Button(kontrol, text="▶", command=lambda: self._sayfa_degistir(1),
+                  bg=p["SURFACE"], fg=p["TEXT"], relief="flat", width=3,
+                  cursor="hand2").pack(side="left", padx=2)
+        self.dis_ac_btn = tk.Button(kontrol, text="Dışarıda Aç",
+                                    command=self._disarida_ac, bg=p["SURFACE"],
+                                    fg=p["BLUE"], relief="flat", padx=8,
+                                    cursor="hand2")
+        self.dis_ac_btn.pack(side="right", padx=2)
 
     def _onizleme_yukle(self, yol):
-        self.onizleme_label.config(
-            text=os.path.basename(yol) if yol else "Önizleme yok")
+        self._pdf_yol = yol
+        self.sayfa = 0
+        if self._pdf_doc is not None:
+            self._pdf_doc.close()
+            self._pdf_doc = None
+        if not yol or not str(yol).lower().endswith(".pdf") or not os.path.exists(yol):
+            self.onizleme_label.config(image="", text="Önizleme yok (XML / PDF bulunamadı)")
+            self._tk_img = None
+            self.sayfa_label.config(text="")
+            self.dis_ac_btn.config(state="disabled")
+            return
+        try:
+            self._pdf_doc = fitz.open(yol)
+        except Exception:
+            self.onizleme_label.config(image="", text="Önizleme yüklenemedi")
+            self._tk_img = None
+            self.sayfa_label.config(text="")
+            self.dis_ac_btn.config(state="disabled")
+            return
+        self.dis_ac_btn.config(state="normal")
+        self._sayfayi_ciz()
+
+    def _sayfayi_ciz(self):
+        if self._pdf_doc is None:
+            return
+        n = self._pdf_doc.page_count
+        self.sayfa = max(0, min(self.sayfa, n - 1))
+        try:
+            pix = self._pdf_doc[self.sayfa].get_pixmap(
+                matrix=fitz.Matrix(self.zoom, self.zoom))
+            png_b64 = base64.b64encode(pix.tobytes("png")).decode()
+            self._tk_img = tk.PhotoImage(data=png_b64)
+            self.onizleme_label.config(image=self._tk_img, text="")
+        except Exception:
+            self.onizleme_label.config(image="", text="Önizleme yüklenemedi")
+            self._tk_img = None
+        self.sayfa_label.config(text=f"sayfa {self.sayfa + 1} / {n}")
+
+    def _zoom_degistir(self, d):
+        self.zoom = max(0.5, min(4.0, self.zoom + d))
+        self._sayfayi_ciz()
+
+    def _sayfa_degistir(self, d):
+        if self._pdf_doc is None:
+            return
+        self.sayfa += d
+        self._sayfayi_ciz()
+
+    def _disarida_ac(self):
+        if self._pdf_yol and os.path.exists(self._pdf_yol):
+            os.startfile(self._pdf_yol)
 
     # ── Onay / İptal ──
     def _onayla(self):
@@ -255,6 +327,9 @@ class ReviewWindow:
              self.uyari[i])
             for i in range(len(self.yeni)) if i not in self.haric and self.uyari[i]]
         if self.on_confirm(nihai, guncel_uyarilar):
+            if self._pdf_doc is not None:
+                self._pdf_doc.close()
+                self._pdf_doc = None
             self.win.destroy()
 
     def _iptal(self):
@@ -262,5 +337,8 @@ class ReviewWindow:
                 "İptal",
                 "Çıkarılan veriler ve düzeltmeler kaydedilmeyecek. Emin misiniz?",
                 parent=self.win):
+            if self._pdf_doc is not None:
+                self._pdf_doc.close()
+                self._pdf_doc = None
             self.win.destroy()
             self.on_cancel()
