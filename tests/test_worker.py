@@ -33,25 +33,25 @@ def _kuyrugu_bosalt(log_q):
             return mesajlar
 
 
-def test_worker_xml_only_excel_olusturur(tmp_path):
+def test_worker_xml_only_review_yayinlar(tmp_path):
     shutil.copy(FIXTURE, tmp_path / "fatura1.xml")
     log_q = queue.Queue()
     stop = threading.Event()
 
     worker("FAKE_KEY", str(tmp_path), "cikti.xlsx", log_q, stop)
 
-    cikti = tmp_path / "cikti.xlsx"
-    assert cikti.exists()
-
     mesajlar = _kuyrugu_bosalt(log_q)
-    tags = [t for t, _ in mesajlar]
-    assert "done" in tags
+    tipler = [t for t, _ in mesajlar]
+    assert "review" in tipler
+    assert "done" not in tipler        # yeni satır var → review, done değil
 
-    # done payload: (atlanmis, yeni, uyarilar) — 1 fatura işlenmiş olmalı
-    done = next(d for t, d in mesajlar if t == "done")
-    atlanmis, yeni, _uyarilar = done
-    assert yeni == 1
-    assert atlanmis == []
+    payload = next(d for t, d in mesajlar if t == "review")
+    assert len(payload["yeni"]) == 1
+    assert payload["atlanmis"] == []
+    assert payload["kesildi"] is False
+
+    # Worker ARTIK Excel yazmaz — yazım onaya ertelendi
+    assert not (tmp_path / "cikti.xlsx").exists()
 
 
 def test_worker_bos_klasor_uyari_verir(tmp_path):
