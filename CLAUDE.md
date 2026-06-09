@@ -59,7 +59,9 @@ Coverage focuses on the pure, tkinter‑free logic: `_duzelt_fatura_no`, `_json_
 ### Module Responsibilities
 - **`main.py`** – Entry point; creates tkinter root and launches the `App` class from `gui.py`.
 - **`gui.py`** – Tkinter interface only. Handles folder selection, API‑key input, progress logging, theming, and error display. Spawns the worker on a background thread and talks to it via a queue. **No extraction/Excel logic lives here** — it imports `worker` from `worker.py`.
-- **`worker.py`** – The background processing loop (`worker(...)`). UI‑independent pure logic: scans the folder, runs PDF tasks in a `ThreadPoolExecutor`, processes XML‑only files sequentially, writes Excel, and reports progress/results through the `log_q` queue and `stop_event`. Testable without tkinter.
+- **`worker.py`** – The background processing loop (`worker(...)`). UI‑independent pure logic: scans the folder, runs PDF tasks in a `ThreadPoolExecutor`, processes XML‑only files sequentially, and reports progress through the `log_q` queue and `stop_event`. **Does not write Excel** — when finished it emits a `("review", payload)` event (payload keys: `mevcut, yeni, atlanmis, uyarilar, cikti, kesildi`) so the GUI can show the review window before saving. Testable without tkinter.
+- **`review.py`** – Pure logic for the review/correction UI (no tkinter): `DUZENLENEBILIR_ALANLAR`, `satir_form_degerleri`, `form_satira_uygula` (converts form text back to typed values via `to_float`/`tarih_parse`, returns a copy), `nihai_satirlar` (final list = existing + non‑excluded new rows). Re‑validation reuses `veri_dogrula`.
+- **`review_ui.py`** – `ReviewWindow` (Toplevel): a master‑detail review/edit screen shown before Excel is written. Top table of new invoices (warned rows highlighted), an editable form for the selected invoice with live warning refresh on "Uygula", row exclusion, jump‑to‑warning, and an **embedded PDF preview** (`fitz` → base64 PNG → `tk.PhotoImage`, zoom/page nav, "Dışarıda Aç"). The colour palette is passed in as a dict (avoids a circular import with `gui.py`). On confirm it calls back `on_confirm(nihai, uyarilar) -> bool`; on cancel `on_cancel()`.
 - **`extraction.py`** – Core data‑extraction logic. Contains:
   - `pdf_den_veri_cek` – Hybrid extraction: uses the `metin` arg if the caller already extracted the digital text (avoids double work), otherwise calls `pdf_text_ayikla`. If the text is > 100 chars, sends the raw text to Gemini; otherwise falls back to JPEG images. Tags the result with `_teknik_bilgi` = `"Dijital"` or `"OCR"`.
   - `pdf_text_ayikla` – Extracts the embedded digital text layer from a PDF (empty string if none).
@@ -90,8 +92,8 @@ Coverage focuses on the pure, tkinter‑free logic: `_duzelt_fatura_no`, `_json_
 3. PDF files are processed in parallel (`ThreadPoolExecutor`); XML files are processed sequentially.
 4. Each PDF is processed with the hybrid method: if it has a usable digital text layer (> 100 chars) the text is sent to Gemini; otherwise it is rendered to JPEG images (zoom factor configurable via the UI) and sent as a vision request. The JSON response is parsed in both cases.
 5. XML files are parsed with `xml.etree.ElementTree` using UBL namespaces.
-6. Extracted data is validated (`veri_dogrula`); warnings are collected and shown at the end via a “⚠ Uyarılar” button.
-7. Validated rows are appended to the Excel file (existing rows are preserved).
+6. Extracted data is validated (`veri_dogrula`); warnings are collected per row.
+7. When processing finishes the worker emits `("review", payload)`; the GUI opens `ReviewWindow`. The user edits/excludes rows and approves. **Excel is written only after approval** via `excel_olustur` (existing rows preserved). On cancel nothing is written. If a write fails (file locked) the window stays open so edits aren't lost.
 8. Progress, success, skip, and error messages are relayed to the UI via a queue.
 
 ### Invoice‑Number Correction
@@ -138,7 +140,6 @@ Dark (Mocha) reference values: `BG=#1e1e2e`, `MANTLE=#181825`, `SURFACE=#313244`
 
 - Commit messages are in Turkish.
 - Format: a short summary line followed by bullet‑point details (if needed).
-- Include `Co‑Authored‑By: Claude Opus 4.6 <noreply@anthropic.com>`.
 - The repository is at `https://github.com/Javerto/Fatura-Ayiklama` (master branch).
 
 ## References
@@ -154,8 +155,3 @@ Dark (Mocha) reference values: `BG=#1e1e2e`, `MANTLE=#181825`, `SURFACE=#313244`
 - All file paths should be handled with `pathlib` for cross‑platform consistency (though the target is Windows).
 - Adding new configuration options should consider both development and frozen environments (store in AppData when frozen).
 - If you add a new popup, copy the style from `_kalite_popup` and use the color constants; never hard‑code hex values.
-
-# Model Bilgisi
-- DeepSeek kullanılıyor, token limiti 102400
-- Bağlam %70'e ulaştığında beni uyar
-- %80'e ulaştığında otomatik /compact yap
