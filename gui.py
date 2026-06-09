@@ -95,6 +95,7 @@ class App:
         self._atlanmis  = []
         self._uyarilar  = []
         self._klasor    = ""
+        self._review_payload = None
 
         self._build_ui()
         self._load_api_key()
