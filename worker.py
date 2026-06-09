@@ -20,7 +20,7 @@ from extraction import (
     TIMEOUT_SANIYE, MAX_WORKERS, veri_dogrula,
     pdf_gecerli_mi,
 )
-from excel_utils import mevcut_verileri_oku, excel_olustur, ExcelHatasi
+from excel_utils import mevcut_verileri_oku
 
 
 def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
@@ -79,16 +79,14 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
 
     log_q.put(("progress", (0, toplam)))
 
-    satirlar = list(mevcut_satirlar)
+    yeni_satirlar = []
     atlanmis      = []
     uyari_listesi = []   # [(dosya_adi, [uyari, ...]), ...]
-    yeni     = 0
     siradaki = 0
 
     def islendi(veri):
-        nonlocal yeni, siradaki
-        satirlar.append(veri)
-        yeni += 1
+        nonlocal siradaki
+        yeni_satirlar.append(veri)
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
         tutar = veri.get("vergiler_dahil_tutar")
@@ -99,14 +97,23 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         for u in uyarilar:
             log("warn", f"   ⚠ {u}")
         if uyarilar:
-            dosya_adi = os.path.basename(veri.get("dosya_yolu") or
-                                         veri.get("xml_yolu") or "bilinmiyor")
+            dosya_adi = os.path.basename(veri.get("dosya_yolu") or "bilinmiyor")
             uyari_listesi.append((dosya_adi, uyarilar))
-        if yeni % 5 == 0:
-            try:
-                excel_olustur(satirlar, CIKTI)
-            except ExcelHatasi as e:
-                log("warn", f"   ⚠ Kayıt başarısız: {e}")
+
+    def _bitir(kesildi=False):
+        """İşlem sonu: yeni satır varsa onaya gönder, yoksa done yayınla."""
+        if yeni_satirlar:
+            log_q.put(("review", {
+                "mevcut":   mevcut_satirlar,
+                "yeni":     yeni_satirlar,
+                "atlanmis": atlanmis,
+                "uyarilar": uyari_listesi,
+                "cikti":    CIKTI,
+                "kesildi":  kesildi,
+            }))
+        else:
+            log("info", "Kaydedilecek yeni fatura bulunamadı.")
+            log_q.put(("done", (atlanmis, 0, uyari_listesi)))
 
     def atla(dosya_adi, sebep):
         nonlocal siradaki
@@ -179,7 +186,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
                     log("critical", str(veri))
                     for f in bekleyen:
                         f.cancel()
-                    log_q.put(("done", (atlanmis, yeni, uyari_listesi)))
+                    _bitir(kesildi=True)
                     return
 
     # ── XML-only dosyalar ──────────────────────────────────────────────
@@ -197,14 +204,5 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         except Exception as e:
             atla(dosya_adi, f"Beklenmedik hata — {type(e).__name__}: {e}")
 
-    # ── Final Excel kaydı ──────────────────────────────────────────────
-    if satirlar:
-        try:
-            excel_olustur(satirlar, CIKTI)
-            log("done_ok", f"Excel oluşturuldu: {CIKTI}  ({len(satirlar)} fatura, {yeni} yeni)")
-        except ExcelHatasi as e:
-            log("critical", str(e))
-    else:
-        log("info", "İşlenebilecek fatura bulunamadı.")
-
-    log_q.put(("done", (atlanmis, yeni, uyari_listesi)))
+    # ── İşlem sonu: onaya gönder ───────────────────────────────────────
+    _bitir(kesildi=stop_event.is_set())
