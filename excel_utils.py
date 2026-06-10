@@ -9,6 +9,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 from extraction import ExcelHatasi
+from ozet import ozet_hesapla
 
 SUTUN = {
     "ft_formul":            1,
@@ -250,9 +251,81 @@ def excel_olustur(satirlar: list, cikti: str):
     tc = ws.cell(row=sr, column=SUTUN["kaynak"])
     tc.border, tc.fill = kenar, toplam_fill
 
+    _ozet_sayfasi_yaz(wb, satirlar)
+
     try:
         wb.save(cikti)
     except PermissionError:
         raise ExcelHatasi(
             f"'{os.path.basename(cikti)}' kaydedilemedi.\n"
             "Dosya Excel'de açık olabilir. Kapatıp tekrar deneyin.")
+
+
+def _ozet_sayfasi_yaz(wb, satirlar: list):
+    """Çalışma kitabına 'Özet' sayfası ekler (genel/aylık/şirket blokları)."""
+    o = ozet_hesapla(satirlar)
+    ws = wb.create_sheet("Özet")
+
+    baslik_font = Font(name="Arial", bold=True, color="FFFFFF", size=11)
+    baslik_fill = PatternFill("solid", start_color="2F5496")
+    fbold = Font(name="Arial", bold=True, size=10)
+    f10 = Font(name="Arial", size=10)
+    num_fmt = "#,##0.00"
+
+    r = 1
+
+    def blok_baslik(metin):
+        nonlocal r
+        for col in range(1, 5):
+            c = ws.cell(row=r, column=col)
+            c.fill = baslik_fill
+        c = ws.cell(row=r, column=1, value=metin)
+        c.font, c.fill = baslik_font, baslik_fill
+        r += 1
+
+    def deger_satiri(etiket, deger, sayi=False):
+        nonlocal r
+        ws.cell(row=r, column=1, value=etiket).font = f10
+        c = ws.cell(row=r, column=2, value=deger)
+        c.font = f10
+        if sayi:
+            c.number_format = num_fmt
+        r += 1
+
+    # ── GENEL ──
+    blok_baslik("GENEL")
+    deger_satiri("Fatura Adedi", o["genel"]["adet"])
+    for pb in sorted(o["genel"]["tutar"]):
+        deger_satiri(f"Toplam Tutar ({pb})", o["genel"]["tutar"][pb], sayi=True)
+    for pb in sorted(o["genel"]["kdv"]):
+        deger_satiri(f"Toplam KDV ({pb})", o["genel"]["kdv"][pb], sayi=True)
+    for kaynak in sorted(o["genel"]["kaynak"]):
+        deger_satiri(f"Kaynak: {kaynak}", o["genel"]["kaynak"][kaynak])
+    r += 1
+
+    def kirilim_tablosu(baslik, ilk_kolon_adi, kayitlar):
+        """kayitlar: [(ad, {"adet", "tutar": {pb: toplam}})]"""
+        nonlocal r
+        blok_baslik(baslik)
+        for col, h in enumerate(
+                [ilk_kolon_adi, "Adet", "Para Birimi", "Toplam Tutar"], 1):
+            ws.cell(row=r, column=col, value=h).font = fbold
+        r += 1
+        for ad, v in kayitlar:
+            pb_listesi = sorted(v["tutar"]) or [None]
+            for i, pb in enumerate(pb_listesi):
+                if i == 0:
+                    ws.cell(row=r, column=1, value=ad).font = f10
+                    ws.cell(row=r, column=2, value=v["adet"]).font = f10
+                if pb is not None:
+                    ws.cell(row=r, column=3, value=pb).font = f10
+                    c = ws.cell(row=r, column=4, value=v["tutar"][pb])
+                    c.font, c.number_format = f10, num_fmt
+                r += 1
+        r += 1
+
+    kirilim_tablosu("AYLIK", "Ay", o["aylik"])
+    kirilim_tablosu("ŞİRKET", "Şirket", o["sirket"])
+
+    for col, w in [(1, 34), (2, 12), (3, 12), (4, 16)]:
+        ws.column_dimensions[get_column_letter(col)].width = w
