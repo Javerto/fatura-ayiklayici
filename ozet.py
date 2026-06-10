@@ -7,7 +7,7 @@ ozet_hesapla(satirlar) üç blok döner:
 - sirket: [(ad, {"adet", "tutar"})] toplam tutara göre azalan sıralı
 """
 from collections import defaultdict
-from datetime import datetime
+from datetime import date
 
 
 def _para_birimi(s: dict) -> str:
@@ -55,8 +55,10 @@ def ozet_hesapla(satirlar: list[dict]) -> dict:
         kaynak_sayim[_kaynak(s)] += 1
 
         tarih = s.get("fatura_tarihi")
+        # date kontrolü datetime'ı da kapsar (datetime, date alt sınıfı);
+        # openpyxl bazı dosyalarda date dönebilir
         ay = (tarih.strftime("%Y-%m")
-              if isinstance(tarih, datetime) else "Bilinmiyor")
+              if isinstance(tarih, date) else "Bilinmiyor")
         a = aylik.setdefault(ay, {"adet": 0, "tutar": defaultdict(float)})
         a["adet"] += 1
         if t is not None:
@@ -71,6 +73,8 @@ def ozet_hesapla(satirlar: list[dict]) -> dict:
     ay_sirali = sorted(ay for ay in aylik if ay != "Bilinmiyor")
     if "Bilinmiyor" in aylik:
         ay_sirali.append("Bilinmiyor")
+    # Not: farklı para birimleri kur çevirisi yapılmadan ham toplanır
+    # (spec gereği) — karma para birimli veride sıralama yaklaşıktır.
     sirket_sirali = sorted(
         sirket, key=lambda ad: -sum(sirket[ad]["tutar"].values()))
 

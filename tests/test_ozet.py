@@ -1,5 +1,5 @@
 """ozet.ozet_hesapla saf mantık testleri."""
-from datetime import datetime
+from datetime import date, datetime
 
 from ozet import ozet_hesapla
 
@@ -91,3 +91,10 @@ def test_tutar_sayisal_degilse_adette_sayilir_toplama_girmez():
                              kdv_haric_tutar=None)])
     assert o["genel"]["adet"] == 1
     assert o["genel"]["tutar"] == {}
+
+
+def test_fatura_tarihi_date_nesnesi_kabul_edilir():
+    # openpyxl bazı dosyalarda datetime yerine date dönebilir
+    o = ozet_hesapla([_satir(fatura_tarihi=date(2024, 6, 1))])
+    aylar = [ay for ay, _ in o["aylik"]]
+    assert aylar == ["2024-06"]
