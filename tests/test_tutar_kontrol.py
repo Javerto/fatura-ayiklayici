@@ -12,7 +12,7 @@ def _temiz_satir(**ek):
 
 def _tutar_uyarilari(satir):
     return [u for u in veri_dogrula(satir)
-            if "KDV oranı" in u or "küçük" in u]
+            if "Örtük KDV" in u or "KDV hariç tutardan" in u]
 
 
 def test_yuzde20_kdv_uyari_yok():
