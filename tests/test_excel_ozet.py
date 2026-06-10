@@ -46,12 +46,31 @@ def test_ozet_sayfali_dosyada_roundtrip_bozulmaz(tmp_path):
 
 
 def test_ikinci_yazimda_ozet_tek_kalir(tmp_path):
+    # Dosya seviyesinde davranış güvencesi: excel_olustur her çağrıda taze
+    # Workbook kurduğu için üst üste yazımlarda Özet sayfası çoğalamaz/bayatlamaz.
     cikti = str(tmp_path / "c.xlsx")
     excel_olustur(_satirlar(tmp_path), cikti)
     excel_olustur(_satirlar(tmp_path), cikti)
     wb = load_workbook(cikti)
     assert wb.sheetnames.count("Özet") == 1
     wb.close()
+
+
+def test_tutarsiz_satir_kirilimda_ad_ve_adetle_gorunur(tmp_path):
+    # Tutarı olmayan satır (vergiler_dahil_tutar=None) kırılım tablosunda
+    # ad + adet ile yer almalı (pb=None dalı), tutar hücresi boş kalmalı.
+    satir = {"fatura_no": "GIB2024123456780", "sirket_adi": "Tutarsiz AS",
+             "fatura_tarihi": datetime(2024, 5, 1),
+             "vergiler_dahil_tutar": None, "kdv_haric_tutar": None,
+             "para_birimi": "TL", "vkn": "1234567890",
+             "dosya_yolu": str(tmp_path / "t.pdf"), "_teknik_bilgi": "OCR"}
+    cikti = str(tmp_path / "c.xlsx")
+    excel_olustur([satir], cikti)
+    ws = load_workbook(cikti)["Özet"]
+    hucreler = [str(c.value) for row in ws.iter_rows()
+                for c in row if c.value is not None]
+    assert "Tutarsiz AS" in hucreler          # şirket kırılımında görünür
+    assert "2024-05" in hucreler              # aylık kırılımda görünür
 
 
 def test_bos_listede_ozet_sayfasi_yine_olusur(tmp_path):
