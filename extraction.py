@@ -86,6 +86,9 @@ SIRA_PATTERN = re.compile(
 
 _BILINEN_PARA_BIRIMLERI = {"TL", "TRY", "EUR", "USD"}
 
+# Türkiye'de geçerli/yaygın KDV oranları (örtük oran kontrolü için)
+KDV_ORANLARI = (0, 1, 8, 10, 18, 20)
+
 
 # ─── YARDIMCILAR ─────────────────────────────────────────────────────────────
 
@@ -222,6 +225,20 @@ def veri_dogrula(veri: dict) -> list[str]:
         uyarilar.append("Vergiler dahil tutar boş")
     elif vdt <= 0:
         uyarilar.append(f"Vergiler dahil tutar sıfır/negatif: {vdt}")
+
+    # tutar tutarlılığı — örtük KDV oranı bilinen oranlardan birine uymalı
+    kht = veri.get("kdv_haric_tutar")
+    if (isinstance(vdt, (int, float)) and isinstance(kht, (int, float))
+            and vdt > 0 and kht > 0):
+        if vdt < kht:
+            uyarilar.append(
+                f"Vergiler dahil tutar ({vdt}) KDV hariç tutardan ({kht}) küçük")
+        else:
+            oran = (vdt - kht) / kht * 100
+            if not any(abs(oran - o) <= 0.5 for o in KDV_ORANLARI):
+                uyarilar.append(
+                    f"Örtük KDV oranı %{oran:.1f} bilinen oranlara "
+                    f"(0/1/8/10/18/20) uymuyor — tutarları kontrol edin")
 
     # fatura_tarihi — parse edilememiş string olarak kaldıysa
     tarih = veri.get("fatura_tarihi")

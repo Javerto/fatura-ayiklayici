@@ -67,10 +67,11 @@ Coverage focuses on the pure, tkinter‑free logic: `_duzelt_fatura_no`, `_json_
   - `pdf_text_ayikla` – Extracts the embedded digital text layer from a PDF (empty string if none).
   - `_json_ayikla` – Robustly extracts a JSON object from the model reply, tolerating ``` fences and surrounding prose; raises `ModelHatasi` if no JSON object is found.
   - `xml_den_veri_cek` – Parses UBL XML invoices directly.
-  - `veri_dogrula` – Validates extracted fields and returns a list of warnings.
+  - `veri_dogrula` – Validates extracted fields and returns a list of warnings. Includes an amount-consistency check: the implied VAT rate derived from `kdv_haric_tutar` and `vergiler_dahil_tutar` must match a known Turkish VAT rate (`KDV_ORANLARI = (0, 1, 8, 10, 18, 20)`, ±0.5 tolerance).
   - Rate limiter (`_rpm_bekle`) – Ensures ≤ 14 requests per minute (Gemini free‑tier limit).
   - PDF image rendering with configurable zoom (1.0×–3.0×).
-- **`excel_utils.py`** – Reads/writes the output Excel file. Maintains a hidden column (O, col 15) with the full file path for robustness, and a visible "Kaynak" column (col 16) showing `Dijital`/`OCR`/`XML`. Creates HYPERLINK formulas for PDF files, plain “XML” labels for XML files. The hidden‑path column position is unchanged, so older Excel outputs remain readable.
+- **`ozet.py`** – Pure summary computation (`ozet_hesapla`): general, monthly, and per-company breakdowns with per-currency totals. No tkinter or openpyxl dependency — only plain Python and the extracted row data.
+- **`excel_utils.py`** – Reads/writes the output Excel file. Maintains a hidden column (O, col 15) with the full file path for robustness, and a visible “Kaynak” column (col 16) showing `Dijital`/`OCR`/`XML`. Creates HYPERLINK formulas for PDF files, plain “XML” labels for XML files. The hidden‑path column position is unchanged, so older Excel outputs remain readable. Also writes an auto-generated **”Özet” sheet** (second sheet; general totals, monthly and company breakdowns, per-currency) via `_ozet_sayfasi_yaz`; the main “Faturalar” sheet stays first/active so older outputs and `mevcut_verileri_oku` are unaffected.
 - **`build.bat`** – One‑click EXE build script.
 
 ### Configuration and State
