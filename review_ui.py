@@ -9,14 +9,15 @@ import fitz
 
 from extraction import veri_dogrula
 from review import (DUZENLENEBILIR_ALANLAR, satir_form_degerleri,
-                    form_satira_uygula, nihai_satirlar)
+                    form_satira_uygula, nihai_satirlar, ogrenilecek_alanlar)
 
 
 class ReviewWindow:
     """Çıkarılan yeni faturaları gözden geçirme/düzeltme penceresi.
 
-    on_confirm(nihai_satirlar, guncel_uyarilar) -> bool
+    on_confirm(nihai_satirlar, guncel_uyarilar, yeni_kurallar) -> bool
         True dönerse pencere kapanır (yazım başarılı), False ise açık kalır.
+        yeni_kurallar: {vkn: {alan: deger}} — "hatırla" ile toplanan kurallar.
     on_cancel() -> None
     """
 
@@ -35,6 +36,7 @@ class ReviewWindow:
         self.secili = None
         self.uyari = [veri_dogrula(s) for s in self.yeni]
         self.form_vars = {}
+        self.toplanan_kurallar = {}
 
         # önizleme durumu
         self._pdf_doc = None
@@ -143,11 +145,18 @@ class ReviewWindow:
                                     wraplength=320)
         self.uyari_label.grid(row=len(DUZENLENEBILIR_ALANLAR), column=0,
                               columnspan=2, sticky="w", padx=4, pady=(6, 2))
+        self.hatirla_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(
+            form_frame, text="Bu düzeltmeleri firma için hatırla (VKN)",
+            variable=self.hatirla_var, bg=p["MANTLE"], fg=p["TEXT"],
+            selectcolor=p["SURFACE"], activebackground=p["MANTLE"],
+            font=("Arial", 8)).grid(row=len(DUZENLENEBILIR_ALANLAR) + 1,
+                                    column=0, columnspan=2, sticky="w", padx=4)
         tk.Button(form_frame, text="Uygula", command=self._uygula,
                   bg=p["SURFACE"], fg=p["GREEN"], relief="flat", padx=12,
                   cursor="hand2", activebackground=p["SURFACE"],
                   activeforeground=p["GREEN"]
-                  ).grid(row=len(DUZENLENEBILIR_ALANLAR) + 1, column=0,
+                  ).grid(row=len(DUZENLENEBILIR_ALANLAR) + 2, column=0,
                          columnspan=2, pady=6)
         form_frame.columnconfigure(1, weight=1)
 
@@ -192,6 +201,7 @@ class ReviewWindow:
         for anahtar, var in self.form_vars.items():
             var.set(degerler.get(anahtar, ""))
         self.haric_var.set(i in self.haric)
+        self.hatirla_var.set(False)
         self._uyari_goster(i)
         self._onizleme_yukle(self.yeni[i].get("dosya_yolu"))
 
@@ -208,6 +218,20 @@ class ReviewWindow:
         self.uyari[i] = veri_dogrula(self.yeni[i])
         self._uyari_goster(i)
         self._tabloyu_guncelle(i)
+        if self.hatirla_var.get():
+            vkn = str(self.yeni[i].get("vkn") or "").strip()
+            alanlar = ogrenilecek_alanlar(self.yeni[i])
+            if vkn and alanlar:
+                self.toplanan_kurallar[vkn] = alanlar
+                messagebox.showinfo(
+                    "Kaydedilecek",
+                    "Düzeltme bu firma için hatırlanacak.", parent=self.win)
+            else:
+                messagebox.showwarning(
+                    "Kaydedilemedi",
+                    "Kural kaydı için geçerli bir VKN ve firma bilgisi gerekli.",
+                    parent=self.win)
+            self.hatirla_var.set(False)
 
     def _haric_degisti(self):
         if self.secili is None:
@@ -390,7 +414,7 @@ class ReviewWindow:
             (os.path.basename(self.yeni[i].get("dosya_yolu") or "bilinmiyor"),
              self.uyari[i])
             for i in range(len(self.yeni)) if i not in self.haric and self.uyari[i]]
-        if self.on_confirm(nihai, guncel_uyarilar):
+        if self.on_confirm(nihai, guncel_uyarilar, self.toplanan_kurallar):
             if self._pdf_doc is not None:
                 self._pdf_doc.close()
                 self._pdf_doc = None
