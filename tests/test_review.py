@@ -3,7 +3,7 @@ from datetime import datetime
 
 from extraction import veri_dogrula
 from review import (DUZENLENEBILIR_ALANLAR, satir_form_degerleri,
-                    form_satira_uygula, nihai_satirlar)
+                    form_satira_uygula, nihai_satirlar, ogrenilecek_alanlar)
 
 
 def test_form_degerleri_tarih_ve_sayi_metne_cevrilir():
@@ -71,3 +71,16 @@ def test_revalidation_kapanisi_vkn_duzeltince_uyari_kalkar():
     duzeltilmis = form_satira_uygula(
         row, {**satir_form_degerleri(row), "vkn": "1234567890"})
     assert not any("VKN" in u for u in veri_dogrula(duzeltilmis))
+
+
+def test_ogrenilecek_alanlar_sadece_firma_sabit_dolu():
+    row = {"sirket_adi": "ACME A.Ş.", "vergi_dairesi": "Kadıköy",
+           "fatura_no": "X", "para_birimi": "TL", "vkn": "1234567890"}
+    assert ogrenilecek_alanlar(row) == {"sirket_adi": "ACME A.Ş.",
+                                        "vergi_dairesi": "Kadıköy"}
+
+
+def test_ogrenilecek_alanlar_bos_atlanir():
+    assert ogrenilecek_alanlar({"sirket_adi": "  ",
+                                "vergi_dairesi": "Ankara"}) == \
+        {"vergi_dairesi": "Ankara"}
