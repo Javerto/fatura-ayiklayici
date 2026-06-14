@@ -11,6 +11,7 @@ import os, pathlib, sys, threading, queue, time
 from worker import worker
 from review_ui import ReviewWindow
 from excel_utils import excel_olustur, ExcelHatasi
+from duzeltme import kurallari_oku, kurallari_yaz, kural_ekle
 
 # EXE modunda .env ve gecmis.json AppData'ya yazılır (kullanıcı görmez/silemez).
 # Geliştirme modunda proje klasörüne yazılır.
@@ -22,6 +23,7 @@ else:
 
 ENV_DOSYASI    = _BASE / ".env"
 GECMIS_DOSYASI = _BASE / "gecmis.json"
+DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
 
 VERSION = "1.0"
 
@@ -491,7 +493,8 @@ class App:
         threading.Thread(
             target=worker,
             args=(api_key, klasor, cikti_adi, self.log_queue, self.stop_event),
-            kwargs={"zoom": float(self.zoom_var.get())},
+            kwargs={"zoom": float(self.zoom_var.get()),
+                    "kurallar": kurallari_oku(DUZELTME_DOSYASI)},
             daemon=True
         ).start()
 
@@ -525,7 +528,9 @@ class App:
             target=worker,
             args=(self.api_var.get().strip(), self._klasor, cikti_adi,
                   self.log_queue, self.stop_event),
-            kwargs={"retry_dosyalar": retry_yollar, "zoom": float(self.zoom_var.get())},
+            kwargs={"retry_dosyalar": retry_yollar,
+                    "zoom": float(self.zoom_var.get()),
+                    "kurallar": kurallari_oku(DUZELTME_DOSYASI)},
             daemon=True
         ).start()
 
@@ -676,7 +681,9 @@ class App:
         ReviewWindow(self.root, payload, palet,
                      self._review_onayla, self._review_iptal)
 
-    def _review_onayla(self, nihai, guncel_uyarilar):
+    def _review_onayla(self, nihai, guncel_uyarilar, yeni_kurallar):
+        if yeni_kurallar:
+            self._kurallari_kaydet(yeni_kurallar)
         payload = self._review_payload
         if len(nihai) == len(payload["mevcut"]):
             # Tüm yeni faturalar hariç tutuldu — Excel'e dokunma (spec)
@@ -695,6 +702,17 @@ class App:
                   f"({len(nihai)} fatura, {yazilan} yeni)")
         self._islem_bitti(payload["atlanmis"], yazilan, guncel_uyarilar)
         return True
+
+    def _kurallari_kaydet(self, yeni_kurallar):
+        kurallar = kurallari_oku(DUZELTME_DOSYASI)
+        for vkn, alanlar in yeni_kurallar.items():
+            kurallar = kural_ekle(kurallar, vkn, alanlar)
+        try:
+            kurallari_yaz(DUZELTME_DOSYASI, kurallar)
+            self._log("info",
+                      f"{len(yeni_kurallar)} firma için düzeltme kuralı kaydedildi.")
+        except OSError as e:
+            self._log("warn", f"Düzeltme kuralları kaydedilemedi: {e}")
 
     def _review_iptal(self):
         payload = self._review_payload
