@@ -63,3 +63,18 @@ def test_worker_bos_klasor_uyari_verir(tmp_path):
     mesajlar = _kuyrugu_bosalt(log_q)
     tags = [t for t, _ in mesajlar]
     assert "critical" in tags  # "işlenecek PDF veya XML yok"
+
+
+def test_worker_kurallari_uygular(tmp_path):
+    """vkn eşleşen kural, review payload'undaki satıra uygulanır."""
+    shutil.copy(FIXTURE, tmp_path / "fatura1.xml")
+    log_q = queue.Queue()
+    stop = threading.Event()
+    kurallar = {"1234567890": {"sirket_adi": "DÜZELTİLMİŞ A.Ş."}}
+
+    worker("FAKE_KEY", str(tmp_path), "cikti.xlsx", log_q, stop,
+           kurallar=kurallar)
+
+    mesajlar = _kuyrugu_bosalt(log_q)
+    payload = next(d for t, d in mesajlar if t == "review")
+    assert payload["yeni"][0]["sirket_adi"] == "DÜZELTİLMİŞ A.Ş."

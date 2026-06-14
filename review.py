@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from extraction import to_float, tarih_parse
+from duzeltme import OGRENILEN_ALANLAR
 
 # (anahtar, etiket, tip)  tip: "metin" | "tarih" | "sayi"
 DUZENLENEBILIR_ALANLAR = [
@@ -58,3 +59,15 @@ def form_satira_uygula(row: dict, form: dict) -> dict:
         else:
             yeni[anahtar] = ham or None
     return yeni
+
+
+def ogrenilecek_alanlar(row: dict) -> dict:
+    """Satırdan öğrenilebilir (firma-sabit) alanların dolu olanlarını döndürür."""
+    sonuc = {}
+    for alan in OGRENILEN_ALANLAR:
+        deger = row.get(alan)
+        if isinstance(deger, str):
+            deger = deger.strip()
+        if deger:
+            sonuc[alan] = deger
+    return sonuc
