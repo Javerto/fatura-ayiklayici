@@ -71,12 +71,14 @@ Coverage focuses on the pure, tkinter‑free logic: `_duzelt_fatura_no`, `_json_
   - Rate limiter (`_rpm_bekle`) – Ensures ≤ 14 requests per minute (Gemini free‑tier limit).
   - PDF image rendering with configurable zoom (1.0×–3.0×).
 - **`ozet.py`** – Pure summary computation (`ozet_hesapla`): general, monthly, and per-company breakdowns with per-currency totals. No tkinter or openpyxl dependency — only plain Python and the extracted row data.
+- **`duzeltme.py`** – Öğrenen düzeltme kuralları (saf mantık, tkinter/Excel'siz). VKN bazlı firma-sabit alan kuralları (`OGRENILEN_ALANLAR = ["sirket_adi", "vergi_dairesi"]`) için `kurallari_oku`/`kurallari_yaz`/`kural_uygula`/`kural_ekle`. Kurallar `duzeltmeler.json`'da tutulur (frozen modda AppData). `para_birimi` bilinçli olarak kapsam dışı (faturaya özel). Worker, çıkarılan her satıra `kural_uygula`'yı `veri_dogrula`'dan önce uygular; review'da "hatırla" checkbox'ı kuralları toplar, gui onayda kaydeder.
 - **`excel_utils.py`** – Reads/writes the output Excel file. Maintains a hidden column (O, col 15) with the full file path for robustness, and a visible “Kaynak” column (col 16) showing `Dijital`/`OCR`/`XML`. Creates HYPERLINK formulas for PDF files, plain “XML” labels for XML files. The hidden‑path column position is unchanged, so older Excel outputs remain readable. Also writes an auto-generated **”Özet” sheet** (second sheet; general totals, monthly and company breakdowns, per-currency) via `_ozet_sayfasi_yaz`; the main “Faturalar” sheet stays first/active so older outputs and `mevcut_verileri_oku` are unaffected.
 - **`build.bat`** – One‑click EXE build script.
 
 ### Configuration and State
 - **`.env`** – Contains `GEMINI_API_KEY` and `TEMA` (`dark`/`light`). In EXE mode this file is stored in `%APPDATA%\FaturaAyiklayici`. A `.env.example` template ships in the repo.
 - **`gecmis.json`** – Log of previous runs (folder, output file name, processed count, duration). Also stored in AppData when frozen.
+- **`duzeltmeler.json`** – VKN bazlı öğrenen düzeltme kuralları. Frozen modda `%APPDATA%\FaturaAyiklayici`, değilse proje klasöründe.
 - **`faturalar.xlsx`** – Example output file (can be deleted).
 
 ### Constants & Settings (extraction.py)
