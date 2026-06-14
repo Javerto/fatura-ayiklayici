@@ -9,12 +9,13 @@ Review penceresinde firma-sabit bir alan düzeltilip "hatırla" işaretlendiğin
 
 Bu, son eklenen review/onay arayüzünün (bkz. `2026-06-08-onay-duzeltme-arayuzu-design.md`) doğal devamıdır: review penceresi *yeni* faturaları yazmadan önce düzeltmeyi sağlar; bu özellik o düzeltmeleri *kalıcı* hale getirip tekrarını önler.
 
-**Öğrenilen alanlar:** `sirket_adi`, `vergi_dairesi`, `para_birimi`.
-VKN eşleştirme anahtarı olduğu için kendisi öğrenilmez.
+**Öğrenilen alanlar:** `sirket_adi`, `vergi_dairesi`.
+VKN eşleştirme anahtarı olduğu için kendisi öğrenilmez. `para_birimi` bilinçli olarak **kapsam dışı** bırakıldı (bkz. Tasarım Kararları).
 
 ## Tasarım Kararları (brainstorming özeti)
 
-- **Kapsam:** Yalnızca firma-sabit alanlar. Faturaya özel alanlar (`fatura_no`, `fatura_tarihi`, tutarlar, `tanim`, `sira_no`) öğrenilemez çünkü her faturada farklıdır; "geçen sefer şuydu" bilgisi genellenemez.
+- **Kapsam:** Yalnızca firma kimliğine ait, değişmez alanlar (`sirket_adi`, `vergi_dairesi`). Faturaya özel alanlar (`fatura_no`, `fatura_tarihi`, tutarlar, `tanim`, `sira_no`) öğrenilemez çünkü her faturada farklıdır; "geçen sefer şuydu" bilgisi genellenemez.
+- **`para_birimi` neden kapsam dışı:** Aynı firma yurt içinde TL, ihracatta EUR/USD kesebilir; para birimi faturaya özeldir, firma-sabit değildir. Yanlış öğrenilen bir para birimi, doğru çıkarılmış bir değeri sessizce ezebilir — kazanımdan büyük bir risk. Bu yüzden öğrenilen alanların dışında tutuldu.
 - **Mekanizma:** Deterministik post-processing kuralları — AI prompt'una **dokunulmaz**. Prompt güncelleme reddedildi (tavuk-yumurta firma tespiti, çift API çağrısı maliyeti, deterministik olmama, test edilemezlik, sınırsız prompt büyümesi).
 - **Kayıt şekli:** Açık onay — review formunda checkbox. Tek seferlik düzeltme istemeden kalıcı kural olmaz.
 - **Eşleştirme:** VKN ile. AI şirket adını yeni bir yanlış varyasyonla yazsa bile VKN aynıysa düzeltilir.
@@ -27,7 +28,7 @@ VKN eşleştirme anahtarı olduğu için kendisi öğrenilmez.
 - `kurallari_yaz(yol, kurallar)` — JSON yaz.
 - `kural_uygula(satir, kurallar) -> dict` — satırın `vkn`'si bir kuralla eşleşirse firma-sabit alanları geçersiz kılınmış bir **kopya** döndürür; eşleşme yoksa kopyayı olduğu gibi döndürür. Saf fonksiyon (orijinali bozmaz).
 - `kural_ekle(kurallar, vkn, alanlar) -> dict` — yeni düzeltmeyi kurallara birleştirip güncel kopya döndürür; boş/None değerleri atlar.
-- Sabit: `OGRENILEN_ALANLAR = ["sirket_adi", "vergi_dairesi", "para_birimi"]`.
+- Sabit: `OGRENILEN_ALANLAR = ["sirket_adi", "vergi_dairesi"]`.
 
 ### 2. `worker.py`
 
@@ -60,8 +61,7 @@ VKN eşleştirme anahtarı olduğu için kendisi öğrenilmez.
 {
   "1234567890": {
     "sirket_adi": "ARÇELİK A.Ş.",
-    "vergi_dairesi": "Büyük Mükellefler",
-    "para_birimi": "EUR"
+    "vergi_dairesi": "Büyük Mükellefler"
   }
 }
 ```
@@ -73,7 +73,6 @@ VKN string anahtardır. Yalnızca dolu firma-sabit değerler saklanır (kısmi p
 - Yeni faturada VKN yok/eşleşmiyor → kural uygulanmaz, zarar yok.
 - Bozuk/eksik JSON → `{}` kabul, çökme yok.
 - **VKN'nin kendisi yanlışsa** → VKN anahtar olduğu için öğrenilemez (tavuk-yumurta); o sefer elle düzeltilir. *(Bilinen sınır.)*
-- **`para_birimi` uyarısı:** Bir firma bazen TL bazen EUR kesebilir; VKN bazında sabit varsaymak yanıltabilir. Tercihen kapsamda; yanlışsa tekrar düzeltince kural güncellenir.
 
 ## Test (saf-mantık odaklı, mevcut kültüre uygun)
 
