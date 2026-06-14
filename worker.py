@@ -21,15 +21,18 @@ from extraction import (
     pdf_gecerli_mi,
 )
 from excel_utils import mevcut_verileri_oku
+from duzeltme import kural_uygula
 
 
 def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
            stop_event: threading.Event, retry_dosyalar: list | None = None,
-           zoom: float = 1.5):
+           zoom: float = 1.5, kurallar: dict | None = None):
     """Fatura işleme döngüsü — ayrı thread'de çalışır."""
 
     def log(tag, mesaj):
         log_q.put((tag, mesaj))
+
+    kurallar = kurallar or {}
 
     try:
         client = genai.Client(
@@ -86,6 +89,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
 
     def islendi(veri):
         nonlocal siradaki
+        veri = kural_uygula(veri, kurallar)
         yeni_satirlar.append(veri)
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
