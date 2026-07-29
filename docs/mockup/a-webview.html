@@ -1,44 +1,26 @@
 <!DOCTYPE html>
-<html lang="tr" data-tema="dark">
+<html lang="tr" data-tema="mocha">
 <head>
 <meta charset="utf-8">
-<title>Mockup A — pywebview (HTML/CSS)</title>
+<title>Mockup A — pywebview (boyutlandırılabilir)</title>
+<link rel="stylesheet" href="tema.css">
 <style>
 /* ═══ TASARIM SİSTEMİ ═══════════════════════════════════════════
-   8px ızgara · tek vurgu rengi · Catppuccin tabanlı
+   8px ızgara · tek vurgu rengi · renkler tema.css'ten gelir
    ═══════════════════════════════════════════════════════════════ */
-:root {
-  --bg:#11111b; --panel:#181825; --card:#1e1e2e; --raised:#252537;
-  --line:#2a2a3c; --line-soft:#22222f;
-  --tx:#cdd6f4; --sub:#a6adc8; --dim:#6c7086;
-  --accent:#89b4fa; --accent-2:#b4befe; --on-accent:#11111b;
-  --ok:#a6e3a1; --warn:#f9e2af; --err:#f38ba8;
-  --ok-bg:rgba(166,227,161,.10); --warn-bg:rgba(249,226,175,.10); --err-bg:rgba(243,139,168,.10);
-  --r:10px; --r-lg:14px;
-  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -8px rgba(0,0,0,.5);
-}
-html[data-tema="light"] {
-  /* Beyaz zemin = nefes alanı · gri kart = içine bir şey konan oyuk */
-  --bg:#e4e7ee; --panel:#ffffff; --card:#f3f5f9; --raised:#e9ecf3;
-  --line:#dde1e9; --line-soft:#edf0f5;
-  --tx:#4c4f69; --sub:#6c6f85; --dim:#9ca0b0;
-  --accent:#1e66f5; --accent-2:#7287fd; --on-accent:#ffffff;
-  --ok:#40a02b; --warn:#df8e1d; --err:#d20f39;
-  --ok-bg:rgba(64,160,43,.10); --warn-bg:rgba(223,142,29,.12); --err-bg:rgba(210,15,57,.09);
-  --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -10px rgba(0,0,0,.18);
-}
+:root{--r:10px;--r-lg:14px}
 *{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
 body{
   font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
-  background:var(--bg); color:var(--tx);
-  display:flex; align-items:center; justify-content:center;
-  min-height:100vh; padding:32px 16px;
-  -webkit-font-smoothing:antialiased;
+  background:var(--panel); color:var(--tx);
+  -webkit-font-smoothing:antialiased; overflow-y:auto;
 }
+/* Pencere = viewport; içerik ortalanır ama okunabilir genişlikte kalır.
+   Form 1500px'e yayılırsa okumak zorlaşır, o yüzden üst sınır var. */
 .app{
-  width:760px; background:var(--panel);
-  border:1px solid var(--line); border-radius:var(--r-lg);
-  box-shadow:var(--shadow); overflow:hidden;
+  width:100%; max-width:1000px; margin:0 auto; min-height:100%;
+  background:var(--panel); display:flex; flex-direction:column;
 }
 
 /* ═══ BAŞLIK ═══ */
@@ -62,8 +44,10 @@ body{
 }
 .ico-btn:hover{background:var(--raised);color:var(--tx);border-color:var(--accent)}
 
-/* ═══ GÖVDE ═══ */
-.body{padding:24px}
+/* ═══ GÖVDE ═══
+   Dikey esneme: fazla yüksekliği günlük emer, üstteki ayarlar sabit kalır. */
+.body{padding:24px;flex:1;display:flex;flex-direction:column;min-height:0}
+.body>*:not(.feed){flex-shrink:0}   /* ayarlar ezilmesin, sadece günlük esnesin */
 .lbl{
   font-size:10.5px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;
   color:var(--dim); margin-bottom:8px; display:block;
@@ -92,7 +76,9 @@ body{
 .btn-ghost:hover{background:var(--raised);color:var(--tx);border-color:var(--accent)}
 
 /* Ayar satırı */
-.row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:20px}
+/* Esnek ızgaralar: pencere daralınca kendiliğinden alt alta iner */
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+      gap:16px;margin-top:20px}
 .field{
   display:flex;align-items:center;background:var(--card);
   border:1px solid var(--line);border-radius:var(--r);
@@ -103,7 +89,13 @@ body{
   flex:1;background:none;border:0;outline:0;color:var(--tx);
   font-size:13.5px;font-family:inherit;height:100%;
 }
-.field .suffix{font-size:12.5px;color:var(--dim);padding-right:10px}
+.field .suffix{font-size:12.5px;color:var(--dim);padding-right:8px}
+/* Alan içi eylem: dosyayı açan buton, dosyanın adının yanında durur */
+.in-btn{border:1px solid var(--line);background:var(--panel);color:var(--accent);
+  padding:6px 11px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;
+  font-family:inherit;transition:.15s;white-space:nowrap;margin-right:3px}
+.in-btn:hover{background:var(--raised)}
+.in-btn:disabled{color:var(--dim);cursor:default;background:var(--panel);opacity:.55}
 .seg{display:flex;gap:3px;background:var(--card);border:1px solid var(--line);
      border-radius:var(--r);padding:4px;height:42px}
 .seg button{
@@ -114,9 +106,9 @@ body{
 .seg button.on{background:var(--raised);color:var(--tx);box-shadow:0 1px 2px rgba(0,0,0,.2)}
 
 /* Eylem */
-.actions{display:flex;gap:10px;align-items:center;margin-top:22px}
+.actions{display:flex;gap:10px;align-items:center;margin-top:22px;flex-wrap:wrap}
 .btn-primary{
-  flex:1;border:0;border-radius:var(--r);cursor:pointer;font-family:inherit;
+  flex:1;min-width:190px;border:0;border-radius:var(--r);cursor:pointer;font-family:inherit;
   background:linear-gradient(140deg,var(--accent),var(--accent-2));
   color:var(--on-accent);font-size:14px;font-weight:650;padding:13px;
   box-shadow:0 2px 10px -2px var(--accent); transition:.15s;
@@ -133,13 +125,22 @@ body{
 .btn-sec.warn{color:var(--warn);border-color:rgba(249,226,175,.28)}
 .btn-sec.warn:hover{background:var(--warn-bg);border-color:var(--warn)}
 
-/* İlerleme */
-.prog-wrap{margin-top:24px}
-.prog-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:9px}
-.prog-head .t{font-size:13px;font-weight:600}
-.prog-head .r{font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
-.track{height:6px;background:var(--card);border-radius:99px;overflow:hidden;
-       border:1px solid var(--line-soft)}
+/* ═══ DURUM KARTI ═══
+   İlerleme + özet tek blokta: "neredeyim" sorusunun tek cevabı. */
+.status{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+        padding:16px 18px;margin-top:22px}
+.st-top{display:flex;align-items:flex-end;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.st-count{font-size:30px;font-weight:660;letter-spacing:-.025em;line-height:1;
+          font-variant-numeric:tabular-nums}
+.st-count .of{font-size:17px;font-weight:500;color:var(--dim)}
+.st-what{font-size:12.5px;color:var(--sub);padding-bottom:2px}
+.st-top .sp{flex:1}
+.st-eta{text-align:right;padding-bottom:1px}
+.st-eta .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;
+           letter-spacing:-.01em}
+.st-eta .k{font-size:10.5px;color:var(--dim);letter-spacing:.05em;
+           text-transform:uppercase;font-weight:600;margin-top:3px}
+.track{height:8px;background:var(--raised);border-radius:99px;overflow:hidden}
 .fill{
   height:100%;width:62%;border-radius:99px;
   background:linear-gradient(90deg,var(--accent),var(--accent-2));
@@ -152,22 +153,26 @@ body{
 }
 @keyframes shine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 
-/* İstatistik şeridi */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
-       background:var(--line-soft);border:1px solid var(--line);
-       border-radius:var(--r);overflow:hidden;margin-top:22px}
-.stat{background:var(--card);padding:13px 16px}
-.stat .n{font-size:19px;font-weight:650;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-.stat .l{font-size:10.5px;color:var(--dim);margin-top:2px;
-         letter-spacing:.05em;text-transform:uppercase;font-weight:600}
-.stat.ok .n{color:var(--ok)} .stat.warn .n{color:var(--warn)} .stat.err .n{color:var(--err)}
+/* Kırılım satırı — durum kartının altında */
+.st-break{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:13px;
+          padding-top:13px;border-top:1px solid var(--line-soft)}
+.st-b{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--sub)}
+.st-b b{font-weight:650;font-variant-numeric:tabular-nums;font-size:13.5px}
+.st-b .d{width:7px;height:7px;border-radius:99px;flex-shrink:0}
+.st-b.ok .d{background:var(--ok)} .st-b.ok b{color:var(--ok)}
+.st-b.warn .d{background:var(--warn)} .st-b.warn b{color:var(--warn)}
+.st-b.err .d{background:var(--err)} .st-b.err b{color:var(--err)}
+.st-break .sp{flex:1}
+.st-sum{font-size:12.5px;color:var(--sub)}
+.st-sum b{font-size:14px;font-weight:650;color:var(--tx);
+          font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 
 /* Günlük */
 .log-head{display:flex;align-items:center;justify-content:space-between;
           margin:26px 0 10px}
 .feed{
   background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-  max-height:238px;overflow-y:auto;
+  flex:1;min-height:190px;overflow-y:auto;
 }
 .feed::-webkit-scrollbar{width:10px}
 .feed::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px;
@@ -202,7 +207,9 @@ body{
       <div class="sub">Sürüm 2.0 · API bağlı</div>
     </div>
     <div class="sp"></div>
-    <button class="ico-btn" onclick="tema()" title="Tema">◐</button>
+    <div class="tema-wrap" id="tw">
+      <button class="ico-btn" id="tb" title="Tema">◐</button>
+    </div>
     <button class="ico-btn" title="Geçmiş">🕐</button>
     <button class="ico-btn" title="Ayarlar">⚙</button>
   </div>
@@ -225,6 +232,7 @@ body{
         <div class="field">
           <input value="faturalar" spellcheck="false">
           <span class="suffix">.xlsx</span>
+          <button class="in-btn">📂 Aç</button>
         </div>
       </div>
       <div>
@@ -240,23 +248,28 @@ body{
 
     <div class="actions">
       <button class="btn-primary">▶ İşlemi Başlat</button>
-      <button class="btn-sec">📂 Excel</button>
       <button class="btn-sec warn">⚠ Uyarılar · 3</button>
+      <button class="btn-sec">↺ Yeniden Dene · 1</button>
     </div>
 
-    <div class="prog-wrap">
-      <div class="prog-head">
-        <span class="t">Faturalar işleniyor…</span>
-        <span class="r">88 / 142 · ~2 dk kaldı</span>
+    <div class="status">
+      <div class="st-top">
+        <div class="st-count">88 <span class="of">/ 142</span></div>
+        <div class="st-what">fatura işlendi</div>
+        <div class="sp"></div>
+        <div class="st-eta">
+          <div class="v">~2 dk</div>
+          <div class="k">kalan süre</div>
+        </div>
       </div>
       <div class="track"><div class="fill"></div></div>
-    </div>
-
-    <div class="stats">
-      <div class="stat ok"><div class="n">85</div><div class="l">Başarılı</div></div>
-      <div class="stat warn"><div class="n">3</div><div class="l">Uyarılı</div></div>
-      <div class="stat err"><div class="n">1</div><div class="l">Atlanan</div></div>
-      <div class="stat"><div class="n">₺48.320</div><div class="l">Toplam</div></div>
+      <div class="st-break">
+        <span class="st-b ok"><span class="d"></span><b>84</b> başarılı</span>
+        <span class="st-b warn"><span class="d"></span><b>3</b> uyarılı</span>
+        <span class="st-b err"><span class="d"></span><b>1</b> atlanan</span>
+        <div class="sp"></div>
+        <span class="st-sum">Toplam <b>48.320,00 ₺</b></span>
+      </div>
     </div>
 
     <div class="log-head">
@@ -300,11 +313,7 @@ body{
   </div>
 </div>
 
-<script>
-function tema(){
-  const h=document.documentElement;
-  h.dataset.tema = h.dataset.tema==='dark' ? 'light' : 'dark';
-}
-</script>
+<script src="tema.js"></script>
+<script>temaKur("tb", "tw");</script>
 </body>
 </html>

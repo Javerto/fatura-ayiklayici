@@ -1,0 +1,102 @@
+/* ═══════════════════════════════════════════════════════════════════
+   TEMA SİSTEMİ — her tema tek bir değişken bloğu.
+   Yeni tema eklemek = bloğu kopyala, renkleri değiştir. Kod değişmez.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Catppuccin Mocha (koyu — varsayılan) ── */
+html[data-tema="mocha"]{
+  --bg:#11111b; --panel:#181825; --card:#1e1e2e; --raised:#252537;
+  --line:#2a2a3c; --line-soft:#22222f;
+  --tx:#cdd6f4; --sub:#a6adc8; --dim:#6c7086;
+  --accent:#89b4fa; --accent-2:#b4befe; --on-accent:#11111b;
+  --ok:#a6e3a1; --warn:#f9e2af; --err:#f38ba8;
+  --ok-bg:rgba(166,227,161,.10); --warn-bg:rgba(249,226,175,.10);
+  --err-bg:rgba(243,139,168,.10); --warn-line:rgba(249,226,175,.30);
+  --focus:rgba(137,180,250,.12);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -8px rgba(0,0,0,.5);
+}
+/* ── Catppuccin Macchiato (koyu — yumuşak) ── */
+html[data-tema="macchiato"]{
+  --bg:#181926; --panel:#1e2030; --card:#24273a; --raised:#303348;
+  --line:#363a4f; --line-soft:#2a2d40;
+  --tx:#cad3f5; --sub:#a5adcb; --dim:#6e738d;
+  --accent:#8aadf4; --accent-2:#b7bdf8; --on-accent:#181926;
+  --ok:#a6da95; --warn:#eed49f; --err:#ed8796;
+  --ok-bg:rgba(166,218,149,.10); --warn-bg:rgba(238,212,159,.10);
+  --err-bg:rgba(237,135,150,.10); --warn-line:rgba(238,212,159,.30);
+  --focus:rgba(138,173,244,.12);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -8px rgba(0,0,0,.5);
+}
+/* ── Catppuccin Frappé (koyu — ılık) ── */
+html[data-tema="frappe"]{
+  --bg:#232634; --panel:#292c3c; --card:#303446; --raised:#3b3f53;
+  --line:#414559; --line-soft:#353950;
+  --tx:#c6d0f5; --sub:#a5adce; --dim:#737994;
+  --accent:#8caaee; --accent-2:#babbf1; --on-accent:#232634;
+  --ok:#a6d189; --warn:#e5c890; --err:#e78284;
+  --ok-bg:rgba(166,209,137,.11); --warn-bg:rgba(229,200,144,.11);
+  --err-bg:rgba(231,130,132,.11); --warn-line:rgba(229,200,144,.32);
+  --focus:rgba(140,170,238,.13);
+  --shadow:0 1px 2px rgba(0,0,0,.28), 0 8px 24px -8px rgba(0,0,0,.45);
+}
+/* ── Nord (koyu — soğuk mavi) ── */
+html[data-tema="nord"]{
+  --bg:#242933; --panel:#2e3440; --card:#353c4a; --raised:#3f4756;
+  --line:#434c5e; --line-soft:#3a4150;
+  --tx:#e5e9f0; --sub:#c2cad8; --dim:#7b8494;
+  --accent:#88c0d0; --accent-2:#8fbcbb; --on-accent:#242933;
+  --ok:#a3be8c; --warn:#ebcb8b; --err:#bf616a;
+  --ok-bg:rgba(163,190,140,.12); --warn-bg:rgba(235,203,139,.12);
+  --err-bg:rgba(191,97,106,.13); --warn-line:rgba(235,203,139,.32);
+  --focus:rgba(136,192,208,.14);
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -8px rgba(0,0,0,.5);
+}
+/* ── Catppuccin Latte (açık) ── */
+html[data-tema="latte"]{
+  --bg:#e4e7ee; --panel:#ffffff; --card:#f3f5f9; --raised:#e9ecf3;
+  --line:#dde1e9; --line-soft:#edf0f5;
+  --tx:#4c4f69; --sub:#6c6f85; --dim:#9ca0b0;
+  --accent:#1e66f5; --accent-2:#7287fd; --on-accent:#ffffff;
+  --ok:#40a02b; --warn:#df8e1d; --err:#d20f39;
+  --ok-bg:rgba(64,160,43,.10); --warn-bg:rgba(223,142,29,.13);
+  --err-bg:rgba(210,15,57,.09); --warn-line:rgba(223,142,29,.42);
+  --focus:rgba(30,102,245,.11);
+  --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -10px rgba(0,0,0,.18);
+}
+/* ── Kağıt (açık — sıcak, Solarized) ── */
+html[data-tema="kagit"]{
+  --bg:#e8e1cd; --panel:#fdf9ee; --card:#f4eeda; --raised:#eae3cc;
+  --line:#e0d7bd; --line-soft:#efe9d7;
+  --tx:#4a4438; --sub:#6b6355; --dim:#9c9280;
+  --accent:#268bd2; --accent-2:#4a9fdb; --on-accent:#ffffff;
+  --ok:#6f8a00; --warn:#b58900; --err:#dc322f;
+  --ok-bg:rgba(111,138,0,.11); --warn-bg:rgba(181,137,0,.13);
+  --err-bg:rgba(220,50,47,.09); --warn-line:rgba(181,137,0,.40);
+  --focus:rgba(38,139,210,.12);
+  --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px -10px rgba(0,0,0,.16);
+}
+
+/* ═══ TEMA SEÇİCİ ═══ */
+.tema-wrap{position:relative}
+.tema-menu{
+  position:absolute; right:0; top:38px; z-index:50;
+  background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  box-shadow:var(--shadow); padding:5px; min-width:186px; display:none;
+}
+.tema-menu.acik{display:block}
+.tema-menu .bas{
+  font-size:10px; font-weight:650; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--dim); padding:7px 9px 5px;
+}
+.tema-opt{
+  display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:7px;
+  cursor:pointer; font-size:12.5px; color:var(--sub); transition:.13s;
+  border:0; background:none; width:100%; text-align:left; font-family:inherit;
+}
+.tema-opt:hover{background:var(--card); color:var(--tx)}
+.tema-opt.on{color:var(--tx); font-weight:600}
+.tema-opt .sw{
+  width:15px; height:15px; border-radius:5px; flex-shrink:0;
+  border:1px solid rgba(128,128,128,.35);
+}
+.tema-opt .tik{margin-left:auto; color:var(--accent); font-size:11px}
