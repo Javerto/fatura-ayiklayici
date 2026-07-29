@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="tr" data-tema="mocha">
+<head>
+<meta charset="utf-8">
+<title>Fatura Ayıklama</title>
+<link rel="stylesheet" href="tema.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
+  background:var(--panel);color:var(--tx);-webkit-font-smoothing:antialiased;
+  display:grid;place-items:center;text-align:center;
+}
+.ph h1{font-size:16px;font-weight:600;margin-bottom:6px}
+.ph p{font-size:13px;color:var(--dim);line-height:1.7}
+.ph code{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;
+         background:var(--card);border:1px solid var(--line);
+         border-radius:6px;padding:2px 6px}
+</style>
+</head>
+<body>
+  <div class="ph">
+    <h1>Fatura Ayıklama</h1>
+    <p>
+      İskelet çalışıyor — pencere <code id="boyut">…</code><br>
+      Arayüz 2. aşamada bu sayfaya gelecek.
+    </p>
+  </div>
+<script>
+const yaz = () => document.getElementById("boyut").textContent =
+  `${window.innerWidth} × ${window.innerHeight}`;
+addEventListener("resize", yaz); yaz();
+</script>
+</body>
+</html>

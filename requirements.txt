@@ -2,3 +2,4 @@ google-genai
 pymupdf
 python-dotenv
 openpyxl
+pywebview
