@@ -22,7 +22,7 @@ if errorlevel 1 (
 )
 
 echo [3/6] Sadece gerekli kutuphaneler kuruluyor...
-.venv_build\Scripts\pip install --quiet google-genai pymupdf python-dotenv openpyxl pyinstaller
+.venv_build\Scripts\pip install --quiet google-genai pymupdf python-dotenv openpyxl pywebview pyinstaller
 if errorlevel 1 (
     echo HATA: Kutuphane kurulumu basarisiz.
     pause & exit /b 1
@@ -35,9 +35,12 @@ echo [4/6] EXE olusturuluyor...
     --name "FaturaAyiklayici" ^
     --icon icon.ico ^
     --collect-all google.genai ^
+    --collect-all webview ^
+    --add-data "web;web" ^
     --hidden-import fitz ^
     --hidden-import openpyxl ^
     --hidden-import dotenv ^
+    --hidden-import clr_loader ^
     main.py
 
 echo [5/6] Temizlik yapiliyor...

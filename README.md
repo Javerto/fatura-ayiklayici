@@ -60,7 +60,9 @@ Varsayılan olarak `gemma-4-31b-it` kullanılmaktadır. Daha yüksek doğruluk i
 
 ## 📂 Proje Yapısı
 - `main.py`: Uygulamanın giriş noktası.
-- `gui.py`: Tkinter arayüzü (yalnızca UI).
+- `api.py`: Arayüz ile Python arasındaki köprü (klasör seçimi, ayarlar, gözden geçirme).
+- `web/`: HTML/CSS/JS arayüz (pywebview penceresinde çalışır).
+- `review.py`: Gözden geçirme/düzeltme ekranının saf mantığı.
 - `worker.py`: Arka plan işleme döngüsü (UI'dan bağımsız iş mantığı).
 - `extraction.py`: AI ve XML tabanlı veri çıkarma motoru.
 - `excel_utils.py`: Excel raporlama ve dosya bağlantıları.

@@ -242,9 +242,7 @@ function apiDurumTazele(var_mi) {
   e.classList.toggle("yok", !var_mi);
 }
 
-async function klasorSec() {
-  const yol = await pywebview.api.klasor_sec();
-  if (!yol) return;
+async function klasorGoster(yol) {
   D.klasor = yol;
   $("klasorYol").textContent = yol;
   $("klasorYol").classList.remove("bos");
@@ -253,6 +251,11 @@ async function klasorSec() {
   $("klasorMeta").innerHTML = t
     ? `<b>${t} dosya</b> bulundu · ${o.pdf} PDF · ${o.xml} XML`
     : "Bu klasörde PDF veya XML bulunamadı";
+}
+
+async function klasorSec() {
+  const yol = await pywebview.api.klasor_sec();
+  if (yol) klasorGoster(yol);
 }
 
 async function basla(retry) {
@@ -310,6 +313,7 @@ async function acilis() {
   };
 
   reviewKur();
+  if (d.klasor) klasorGoster(d.klasor);       // son kullanılan klasör
   if (!d.api_key_var) setTimeout(apiKeyModal, 400);
 }
 

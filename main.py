@@ -24,6 +24,25 @@ def web_dosyasi(ad: str) -> str:
     return str(kok / "web" / ad)
 
 
+def _webview2_uyarisi(hata: Exception):
+    """WebView2 yoksa sessizce çökmek yerine ne yapılacağını anlat."""
+    mesaj = (
+        "Uygulama açılamadı.\n\n"
+        "Bu program Microsoft Edge WebView2 bileşenini kullanıyor ve "
+        "bilgisayarınızda kurulu görünmüyor.\n\n"
+        "Kurmak için microsoft.com/edge/webview2 adresinden "
+        '"Evergreen Standalone Installer" dosyasını indirip çalıştırın, '
+        "ardından bu programı yeniden açın.\n\n"
+        f"Teknik ayrıntı: {hata}"
+    )
+    try:
+        import ctypes
+        ctypes.windll.user32.MessageBoxW(
+            None, mesaj, "Fatura Ayıklama — WebView2 gerekli", 0x10)
+    except Exception:
+        print(mesaj)
+
+
 def main():
     api = Api()
     # Pencere referansı `_` önekiyle saklanmalı: pywebview, arayüze açacağı
@@ -40,7 +59,11 @@ def main():
     )
     api._pencere = pencere
     pencere.events.closing += api._pencere_kapaniyor
-    webview.start()
+    try:
+        webview.start()
+    except Exception as e:          # en sık nedeni: WebView2 kurulu değil
+        _webview2_uyarisi(e)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

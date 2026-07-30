@@ -83,10 +83,17 @@ class Api:
     def baslangic_durumu(self) -> dict:
         """Açılışta arayüzün ihtiyaç duyduğu ayarlar."""
         tema = os.environ.get("TEMA", "mocha")
+        # Klasör taşınmış/silinmiş olabilir; yoksa boş dönüp seçtiririz.
+        son_klasor = os.environ.get("KLASOR", "")
+        if son_klasor and os.path.isdir(son_klasor):
+            self._klasor = son_klasor
+        else:
+            son_klasor = ""
         return {
             "tema": tema if tema in GECERLI_TEMALAR else "mocha",
             "api_key_var": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
             "kalite": os.environ.get("KALITE", "1.5"),
+            "klasor": son_klasor,
         }
 
     def tema_kaydet(self, ad: str) -> bool:
@@ -109,6 +116,7 @@ class Api:
         if not secim:
             return ""
         self._klasor = secim[0] if isinstance(secim, (list, tuple)) else secim
+        self._ayar_yaz("KLASOR", self._klasor)
         return self._klasor
 
     def klasor_ozeti(self, klasor: str) -> dict:

@@ -12,24 +12,28 @@ Bu dosya, Gemini CLI ve geliştiriciler için projenin yapısını, çalışma p
 - **Arayüz:** Tkinter (Özel Catppuccin temalı)
 - **PDF İşleme:** PyMuPDF (fitz)
 - **Excel:** openpyxl
+- **Arayüz:** pywebview (Windows WebView2) + HTML/CSS/JS
 - **Dağıtım:** PyInstaller (Windows EXE)
 
 ## Mimari Yapı
 
-Proje dört ana modülden oluşmaktadır:
+Proje şu ana modüllerden oluşur:
 
-1.  **`main.py`**: Uygulamanın giriş noktası. Tkinter kök penceresini oluşturur ve `App` sınıfını başlatır.
-2.  **`gui.py`**: 
-    - Kullanıcı arayüzünü (UI) yönetir.
-    - Uzun süren işlemleri ana thread'i dondurmamak için ayrı bir `worker` thread'inde çalıştırır.
-    - Thread'ler arası iletişim için `queue.Queue` ve `threading.Event` (durdurma için) kullanır.
-    - Tema yönetimi ve işlem geçmişi (gecmis.json) burada tutulur.
-3.  **`extraction.py`**: 
+1.  **`main.py`**: Giriş noktası. Kayıtlı boyutla pywebview penceresini açar.
+2.  **`api.py`**: Arayüz ile Python arasındaki köprü.
+    - Genel metotları arayüze `pywebview.api.<metot>()` olarak açılır.
+    - Uzun süren işi ayrı bir `worker` thread'inde çalıştırır; iletişim `queue.Queue` ve
+      `threading.Event` ile olur, olaylar gruplanıp arayüze iletilir.
+    - Ayarlar (.env), işlem geçmişi (gecmis.json) ve gözden geçirme akışı burada yönetilir.
+    - **Dikkat:** iç durum `_` önekiyle saklanmalıdır; pywebview genel niteliklere özyineleyerek
+      girer ve pencere referansı açıkta kalırsa uygulama açılışta donar.
+3.  **`web/`**: Arayüzün tamamı (HTML/CSS/JS). Altı tema `tema.css` içinde.
+4.  **`extraction.py`**: 
     - **XML:** UBL e-fatura standartlarına göre doğrudan ElementTree ile ayrıştırma yapar.
     - **PDF:** Sayfaları görsele çevirir ve Gemini API'ye gönderir. 
     - **Rate Limiting:** Dakikada 14 istek (RPM) sınırını aşmamak için `_rpm_bekle` mekanizması içerir.
     - **Doğrulama:** `veri_dogrula` fonksiyonu ile ayıklanan verilerin mantıksal kontrolünü yapar.
-4.  **`excel_utils.py`**: Excel dosyasını oluşturur, verileri yazar ve her satıra ilgili dosyanın yerel bağlantısını (link) ekler.
+5.  **`excel_utils.py`**: Excel dosyasını oluşturur, verileri yazar ve her satıra ilgili dosyanın yerel bağlantısını (link) ekler.
 
 ## Kurulum ve Çalıştırma
 
