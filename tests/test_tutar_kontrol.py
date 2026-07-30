@@ -11,8 +11,11 @@ def _temiz_satir(**ek):
 
 
 def _tutar_uyarilari(satir):
-    return [u for u in veri_dogrula(satir)
-            if "Örtük KDV" in u or "KDV hariç tutardan" in u]
+    """Tutar kontrolünden gelen uyarı mesajları (alan adı hep aynı olduğu için
+    burada yalnızca mesaj kısmı döndürülür)."""
+    return [m for a, m in veri_dogrula(satir)
+            if a == "vergiler_dahil_tutar"
+            and ("Örtük KDV" in m or "KDV hariç tutardan" in m)]
 
 
 def test_yuzde20_kdv_uyari_yok():

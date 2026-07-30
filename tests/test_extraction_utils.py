@@ -69,40 +69,40 @@ def test_veri_dogrula_temiz_veri_uyari_yok():
 def test_veri_dogrula_bos_fatura_no():
     v = _temiz_veri()
     v["fatura_no"] = ""
-    assert any("Fatura no boş" in u for u in veri_dogrula(v))
+    assert ("fatura_no", "Fatura no boş") in veri_dogrula(v)
 
 
 def test_veri_dogrula_yalnizca_rakam_fatura_no():
     v = _temiz_veri()
     v["fatura_no"] = "1234567890123456"
-    assert any("yalnızca rakam" in u for u in veri_dogrula(v))
+    assert any(a == "fatura_no" and "yalnızca rakam" in m for a, m in veri_dogrula(v))
 
 
 def test_veri_dogrula_gecersiz_vkn():
     v = _temiz_veri()
     v["vkn"] = "123"
-    assert any("VKN" in u for u in veri_dogrula(v))
+    assert any(a == "vkn" and "VKN" in m for a, m in veri_dogrula(v))
 
 
 def test_veri_dogrula_eksik_tutar():
     v = _temiz_veri()
     v["vergiler_dahil_tutar"] = None
-    assert any("Vergiler dahil tutar boş" in u for u in veri_dogrula(v))
+    assert ("vergiler_dahil_tutar", "Vergiler dahil tutar boş") in veri_dogrula(v)
 
 
 def test_veri_dogrula_okunmamis_tarih_string():
     v = _temiz_veri()
     v["fatura_tarihi"] = "15 Mart 2024"
-    assert any("Tarih okunamadı" in u for u in veri_dogrula(v))
+    assert any(a == "fatura_tarihi" and "Tarih okunamadı" in m for a, m in veri_dogrula(v))
 
 
 def test_veri_dogrula_bilinmeyen_para_birimi():
     v = _temiz_veri()
     v["para_birimi"] = "GBP"
-    assert any("Bilinmeyen para birimi" in u for u in veri_dogrula(v))
+    assert any(a == "para_birimi" and "Bilinmeyen para birimi" in m for a, m in veri_dogrula(v))
 
 
 def test_veri_dogrula_sira_no_tesvik_karismasi():
     v = _temiz_veri()
     v["sira_no"] = 1500
-    assert any("teşvik" in u for u in veri_dogrula(v))
+    assert any(a == "sira_no" and "teşvik" in m for a, m in veri_dogrula(v))

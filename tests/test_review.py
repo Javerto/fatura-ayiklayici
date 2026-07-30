@@ -67,10 +67,25 @@ def test_revalidation_kapanisi_vkn_duzeltince_uyari_kalkar():
     row = {"fatura_no": "GIB2024123456789", "vergiler_dahil_tutar": 100.0,
            "para_birimi": "TL", "sirket_adi": "ACME",
            "fatura_tarihi": datetime(2024, 1, 1), "vkn": "123"}
-    assert any("VKN" in u for u in veri_dogrula(row))
+    assert any(a == "vkn" for a, _ in veri_dogrula(row))
     duzeltilmis = form_satira_uygula(
         row, {**satir_form_degerleri(row), "vkn": "1234567890"})
-    assert not any("VKN" in u for u in veri_dogrula(duzeltilmis))
+    assert not any(a == "vkn" for a, _ in veri_dogrula(duzeltilmis))
+
+
+def test_her_uyari_duzenlenebilir_bir_alana_baglanir():
+    """Uyarının alan adı formda karşılığı olmayan bir şeye işaret ederse,
+    gözden geçirme ekranında hiçbir yere tutunamaz ve görünmez olur."""
+    alanlar = {a for a, _, _ in DUZENLENEBILIR_ALANLAR}
+    bozuk = {                      # her kontrolü aynı anda tetikleyen satır
+        "fatura_no": "12345", "fatura_tarihi": "15 Mart 2024", "sirket_adi": "",
+        "vkn": "123", "sira_no": 1500, "para_birimi": "XYZ",
+        "kdv_haric_tutar": 100.0, "vergiler_dahil_tutar": 137.0,
+    }
+    uyarilar = veri_dogrula(bozuk)
+    assert uyarilar, "test verisi hiç uyarı üretmedi"
+    bilinmeyen = {a for a, _ in uyarilar} - alanlar
+    assert not bilinmeyen, f"formda karşılığı olmayan alan(lar): {bilinmeyen}"
 
 
 def test_ogrenilecek_alanlar_sadece_firma_sabit_dolu():

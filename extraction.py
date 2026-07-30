@@ -186,73 +186,78 @@ def _json_ayikla(cevap: str) -> dict:
     raise ModelHatasi("Modelden geçersiz JSON yanıtı alındı. Dosya atlanıyor.")
 
 
-def veri_dogrula(veri: dict) -> list[str]:
-    """Fatura verisindeki olası sorunları uyarı listesi olarak döner.
+def veri_dogrula(veri: dict) -> list[tuple[str, str]]:
+    """Fatura verisindeki olası sorunları (alan, mesaj) çiftleri olarak döner.
 
     Dönüş değeri boşsa veri temiz demektir.
-    Uyarılar işlemi durdurmaz — kullanıcıya log'da gösterilir.
+    Uyarılar işlemi durdurmaz — kullanıcıya gösterilir.
+
+    Alan adı, uyarının hangi düzenlenebilir alandan kaynaklandığını söyler;
+    gözden geçirme ekranı uyarıyı o alanın altında gösterir.
     """
     uyarilar = []
+
+    def ekle(alan, mesaj):
+        uyarilar.append((alan, mesaj))
 
     # fatura_no — boş veya tamamen sayısal
     fn = str(veri.get("fatura_no") or "").strip()
     if not fn:
-        uyarilar.append("Fatura no boş")
+        ekle("fatura_no", "Fatura no boş")
     else:
         if re.sub(r"[\-/\s_.]", "", fn).isdigit():
-            uyarilar.append(f"Fatura no yalnızca rakam: '{fn}' — format kontrolü yapın")
+            ekle("fatura_no", f"Fatura no yalnızca rakam: '{fn}' — format kontrolü yapın")
         if len(fn) != 16:
-            uyarilar.append(
-                f"Fatura no uzunluğu {len(fn)} karakter, otomatik düzeltilemedi — 16 olmalı: '{fn}'"
-            )
+            ekle("fatura_no",
+                 f"Fatura no uzunluğu {len(fn)} karakter, otomatik düzeltilemedi — 16 olmalı: '{fn}'")
 
     # sira_no — 3 haneden büyükse muhtemelen teşvik no ile karışmış
     sn = veri.get("sira_no")
     if sn is not None and sn >= 1000:
-        uyarilar.append(
-            f"Sıra no {int(sn)} — 3 haneden büyük, teşvik belgesi no ile karışmış olabilir")
+        ekle("sira_no",
+             f"Sıra no {int(sn)} — 3 haneden büyük, teşvik belgesi no ile karışmış olabilir")
 
     # vkn — 10-11 rakam olmalı
     vkn = str(veri.get("vkn") or "").strip()
     if not vkn:
-        uyarilar.append("VKN boş")
+        ekle("vkn", "VKN boş")
     elif not vkn.isdigit() or len(vkn) not in (10, 11):
-        uyarilar.append(f"VKN '{vkn}' geçersiz format (10-11 rakam olmalı)")
+        ekle("vkn", f"VKN '{vkn}' geçersiz format (10-11 rakam olmalı)")
 
     # vergiler_dahil_tutar — zorunlu, pozitif
     vdt = veri.get("vergiler_dahil_tutar")
     if vdt is None:
-        uyarilar.append("Vergiler dahil tutar boş")
+        ekle("vergiler_dahil_tutar", "Vergiler dahil tutar boş")
     elif vdt <= 0:
-        uyarilar.append(f"Vergiler dahil tutar sıfır/negatif: {vdt}")
+        ekle("vergiler_dahil_tutar", f"Vergiler dahil tutar sıfır/negatif: {vdt}")
 
     # tutar tutarlılığı — örtük KDV oranı bilinen oranlardan birine uymalı
     kht = veri.get("kdv_haric_tutar")
     if (isinstance(vdt, (int, float)) and isinstance(kht, (int, float))
             and vdt > 0 and kht > 0):
         if vdt < kht:
-            uyarilar.append(
-                f"Vergiler dahil tutar ({vdt}) KDV hariç tutardan ({kht}) küçük")
+            ekle("vergiler_dahil_tutar",
+                 f"Vergiler dahil tutar ({vdt}) KDV hariç tutardan ({kht}) küçük")
         else:
             oran = (vdt - kht) / kht * 100
             if not any(abs(oran - o) <= 0.5 for o in KDV_ORANLARI):
-                uyarilar.append(
-                    f"Örtük KDV oranı %{oran:.1f} bilinen oranlara "
-                    f"(0/1/8/10/18/20) uymuyor — tutarları kontrol edin")
+                ekle("vergiler_dahil_tutar",
+                     f"Örtük KDV oranı %{oran:.1f} bilinen oranlara "
+                     f"(0/1/8/10/18/20) uymuyor — tutarları kontrol edin")
 
     # fatura_tarihi — parse edilememiş string olarak kaldıysa
     tarih = veri.get("fatura_tarihi")
     if isinstance(tarih, str) and tarih:
-        uyarilar.append(f"Tarih okunamadı: '{tarih}'")
+        ekle("fatura_tarihi", f"Tarih okunamadı: '{tarih}'")
 
     # para_birimi — bilinen listede olmayan değer
     pb = str(veri.get("para_birimi") or "").strip().upper()
     if pb and pb not in _BILINEN_PARA_BIRIMLERI:
-        uyarilar.append(f"Bilinmeyen para birimi: '{pb}'")
+        ekle("para_birimi", f"Bilinmeyen para birimi: '{pb}'")
 
     # sirket_adi — boş olmamalı
     if not str(veri.get("sirket_adi") or "").strip():
-        uyarilar.append("Şirket adı boş")
+        ekle("sirket_adi", "Şirket adı boş")
 
     return uyarilar
 

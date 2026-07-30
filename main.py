@@ -26,7 +26,11 @@ def web_dosyasi(ad: str) -> str:
 
 def main():
     api = Api()
-    api.pencere = webview.create_window(
+    # Pencere referansı `_` önekiyle saklanmalı: pywebview, arayüze açacağı
+    # API nesnesinin genel niteliklerine özyineleyerek girer (webview/util.py
+    # get_functions). Window nesnesi js_api'ye geri işaret ettiği için bu
+    # halkada dönüp uygulamayı açılışta dondurur.
+    api._pencere = webview.create_window(
         f"Fatura Ayıklama  v{VERSION}",
         web_dosyasi("index.html"),
         js_api=api,

@@ -84,7 +84,7 @@ window.olaylar = function (liste) {
             <div class="nm">${kacar(f.fatura_no)}</div>
             <div class="co">${kacar(f.sirket_adi)}${
               typeof f.tutar === "number" ? " · " + para(f.tutar, f.para_birimi) : ""}</div>
-            ${uy.map(u => `<div class="note">⚠ ${kacar(u)}</div>`).join("")}
+            ${uy.map(u => `<div class="note">⚠ ${kacar(u[1])}</div>`).join("")}
           </div>
           ${f.kaynak ? `<span class="tag">${kacar(f.kaynak)}</span>` : ""}
           <span class="time">${f.sure != null ? nf.format(f.sure).replace(",00", "") + "s" : ""}</span>
@@ -191,7 +191,7 @@ function uyariModal() {
       Bu uyarılar işlemi durdurmaz; kontrol edilmesi önerilen alanları gösterir.</div>
     <div class="icerik">${D.uyarilar.map(u => `
       <div class="uy-grup"><div class="dosya">${kacar(u.dosya)}</div>
-        ${u.liste.map(x => `<div class="u">⚠ ${kacar(x)}</div>`).join("")}</div>`).join("")}
+        ${u.liste.map(x => `<div class="u">⚠ ${kacar(x[1])}</div>`).join("")}</div>`).join("")}
     </div>
     <div class="alt"><button class="btn-sec" onclick="this.closest('.perde').remove()">Kapat</button></div>
   `, true);

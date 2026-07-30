@@ -2,7 +2,7 @@
 JS ↔ Python köprüsü.
 
 Arayüz (web/) bu sınıfın metotlarını `pywebview.api.<metot>()` ile çağırır.
-Arka plandaki worker ise `log_q` kuyruğuna yazar; `_pompa` bu olayları
+Arka plandaki worker ise `_log_q` kuyruğuna yazar; `_pompa` bu olayları
 gruplayıp `window.olaylar([...])` ile arayüze iletir.
 
 Eski `gui.py`'nin tkinter'dan bağımsız tüm sorumlulukları buraya taşındı.
@@ -39,12 +39,12 @@ GECERLI_TEMALAR = ("mocha", "macchiato", "frappe", "nord", "latte", "kagit")
 
 class Api:
     def __init__(self):
-        self.pencere = None
-        self.log_q = queue.Queue()
-        self.stop_event = threading.Event()
-        self.klasor = ""
-        self.cikti = ""
-        self.atlanmis = []
+        self._pencere = None
+        self._log_q = queue.Queue()
+        self._stop_event = threading.Event()
+        self._klasor = ""
+        self._cikti = ""
+        self._atlanmis = []
         self._baslangic = 0.0
         load_dotenv(dotenv_path=ENV_DOSYASI)
 
@@ -75,11 +75,11 @@ class Api:
 
     def klasor_sec(self) -> str:
         """Klasör seçtirir ve içindeki fatura sayısını döndürür."""
-        secim = self.pencere.create_file_dialog(webview.FOLDER_DIALOG)
+        secim = self._pencere.create_file_dialog(webview.FOLDER_DIALOG)
         if not secim:
             return ""
-        self.klasor = secim[0] if isinstance(secim, (list, tuple)) else secim
-        return self.klasor
+        self._klasor = secim[0] if isinstance(secim, (list, tuple)) else secim
+        return self._klasor
 
     def klasor_ozeti(self, klasor: str) -> dict:
         """Klasördeki PDF/XML sayısı — seçimden hemen sonra gösterilir."""
@@ -103,17 +103,17 @@ class Api:
             return {"hata": "Lütfen geçerli bir klasör seçin."}
 
         cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
-        self.klasor = klasor
-        self.cikti = os.path.join(klasor, cikti_adi)
-        self.atlanmis = []
+        self._klasor = klasor
+        self._cikti = os.path.join(klasor, cikti_adi)
+        self._atlanmis = []
         self._baslangic = time.time()
-        self.stop_event.clear()
-        self.log_q = queue.Queue()
+        self._stop_event.clear()
+        self._log_q = queue.Queue()
 
         retry = ayarlar.get("retry") or None
         threading.Thread(
             target=worker,
-            args=(api_key, klasor, cikti_adi, self.log_q, self.stop_event),
+            args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
             kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
                     "kurallar": kurallari_oku(DUZELTME_DOSYASI),
                     "retry_dosyalar": retry},
@@ -123,24 +123,24 @@ class Api:
         return {"ok": True}
 
     def durdur(self) -> bool:
-        self.stop_event.set()
+        self._stop_event.set()
         return True
 
     def yeniden_dene(self) -> dict:
         """Son çalışmada atlanan dosyaları tekrar dener."""
-        if not self.atlanmis or not self.klasor:
+        if not self._atlanmis or not self._klasor:
             return {"hata": "Yeniden denenecek dosya yok."}
-        yollar = [os.path.join(self.klasor, ad) for ad, _ in self.atlanmis]
+        yollar = [os.path.join(self._klasor, ad) for ad, _ in self._atlanmis]
         return self.basla({
-            "klasor": self.klasor,
-            "cikti": pathlib.Path(self.cikti).stem,
+            "klasor": self._klasor,
+            "cikti": pathlib.Path(self._cikti).stem,
             "kalite": os.environ.get("KALITE", "1.5"),
             "retry": yollar,
         })
 
     def excel_ac(self) -> bool:
-        if self.cikti and os.path.exists(self.cikti):
-            os.startfile(self.cikti)
+        if self._cikti and os.path.exists(self._cikti):
+            os.startfile(self._cikti)
             return True
         return False
 
@@ -166,7 +166,7 @@ class Api:
             fonksiyon,
             ",".join(json.dumps(a, ensure_ascii=False, default=str) for a in argumanlar))
         try:
-            self.pencere.evaluate_js(kod)
+            self._pencere.evaluate_js(kod)
         except Exception:
             pass   # pencere kapanmışsa olayı sessizce düşür
 
@@ -180,12 +180,12 @@ class Api:
         while not bitti:
             olaylar = []
             try:
-                olaylar.append(self.log_q.get(timeout=0.2))
+                olaylar.append(self._log_q.get(timeout=0.2))
             except queue.Empty:
                 continue
             while len(olaylar) < 60:
                 try:
-                    olaylar.append(self.log_q.get_nowait())
+                    olaylar.append(self._log_q.get_nowait())
                 except queue.Empty:
                     break
 
@@ -196,7 +196,7 @@ class Api:
                     bitti = True
                 elif tag == "done":
                     atlanmis, islenen, _uyarilar = veri
-                    self.atlanmis = atlanmis
+                    self._atlanmis = atlanmis
                     self._gecmis_kaydet(islenen, len(atlanmis))
                     # Yeni fatura çıkmamış olabilir ama Excel önceki
                     # çalışmalardan duruyorsa kullanıcı yine de açabilmeli.
@@ -212,12 +212,12 @@ class Api:
 
     def _mevcut_cikti(self) -> str:
         """Diskte gerçekten duran çıktı dosyasının yolu (yoksa boş)."""
-        return self.cikti if self.cikti and os.path.exists(self.cikti) else ""
+        return self._cikti if self._cikti and os.path.exists(self._cikti) else ""
 
     def _excel_yaz(self, payload: dict) -> dict:
         # ponytail: geçici — 4. aşamada gözden geçirme ekranı araya girecek.
         # Şu an çıkarılan her satır doğrudan Excel'e yazılıyor.
-        self.atlanmis = payload["atlanmis"]
+        self._atlanmis = payload["atlanmis"]
         try:
             excel_olustur(payload["mevcut"] + payload["yeni"], payload["cikti"])
         except ExcelHatasi as e:
@@ -225,7 +225,7 @@ class Api:
             return {"t": "bitti", "hata": str(e), "yazilan": 0,
                     "atlanan": len(payload["atlanmis"]),
                     "cikti": self._mevcut_cikti()}
-        self.cikti = payload["cikti"]
+        self._cikti = payload["cikti"]
         yazilan = len(payload["yeni"])
         self._gecmis_kaydet(yazilan, len(payload["atlanmis"]))
         return {"t": "bitti", "yazilan": yazilan,
@@ -234,8 +234,8 @@ class Api:
     def _gecmis_kaydet(self, islenen: int, atlanan: int):
         kayit = {
             "tarih":   time.strftime("%Y-%m-%d %H:%M"),
-            "klasor":  os.path.basename(self.klasor) or self.klasor,
-            "dosya":   pathlib.Path(self.cikti).stem if self.cikti else "",
+            "klasor":  os.path.basename(self._klasor) or self._klasor,
+            "dosya":   pathlib.Path(self._cikti).stem if self._cikti else "",
             "islenen": islenen,
             "atlanan": atlanan,
             "sure_dk": round((time.time() - self._baslangic) / 60, 1),
