@@ -1,4 +1,6 @@
 """duzeltme.py — öğrenen düzeltme kuralları saf mantık testleri."""
+import pytest
+
 from duzeltme import (OGRENILEN_ALANLAR, kurallari_oku, kurallari_yaz,
                       kural_uygula, kural_ekle)
 
@@ -81,3 +83,24 @@ def test_kural_ekle_orijinali_bozmaz():
     kurallar = {"1234567890": {"sirket_adi": "ESKİ"}}
     kural_ekle(kurallar, "1234567890", {"sirket_adi": "YENİ"})
     assert kurallar["1234567890"]["sirket_adi"] == "ESKİ"
+
+
+def test_kurallari_yaz_hatada_eski_dosyayi_bozmaz(tmp_path, monkeypatch):
+    """Yazma kesilirse bozuk JSON kalıyordu; kurallari_oku onu sessizce {}
+    sayıp öğrenilmiş tüm firma kurallarını yok ediyordu."""
+    import duzeltme
+
+    yol = tmp_path / "duzeltmeler.json"
+    kurallari_yaz(yol, {"1234567890": {"sirket_adi": "ACME"}})
+    onceki = yol.read_text("utf-8")
+
+    def patlayan_dump(*a, **k):
+        raise OSError("disk dolu")
+
+    monkeypatch.setattr(duzeltme.json, "dump", patlayan_dump)
+    with pytest.raises(OSError):
+        kurallari_yaz(yol, {"9999999999": {"sirket_adi": "YENI"}})
+
+    assert yol.read_text("utf-8") == onceki
+    assert not (tmp_path / "duzeltmeler.json.tmp").exists()
+    assert kurallari_oku(yol) == {"1234567890": {"sirket_adi": "ACME"}}

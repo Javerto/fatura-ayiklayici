@@ -5,6 +5,7 @@ Saf mantık (tkinter/Excel'siz, test edilebilir). Kurallar JSON'da tutulur:
     {"<vkn>": {"sirket_adi": "...", "vergi_dairesi": "..."}}
 """
 import json
+import os
 
 # Firma kimliğine ait, faturadan faturaya değişmeyen alanlar.
 # para_birimi bilinçli olarak dışarıda: aynı firma TL/EUR kesebilir.
@@ -22,9 +23,23 @@ def kurallari_oku(yol) -> dict:
 
 
 def kurallari_yaz(yol, kurallar: dict) -> None:
-    """Kuralları JSON olarak yaz (UTF-8, okunabilir girinti)."""
-    with open(yol, "w", encoding="utf-8") as f:
-        json.dump(kurallar, f, ensure_ascii=False, indent=2)
+    """Kuralları JSON olarak yaz (UTF-8, okunabilir girinti).
+
+    Önce geçici dosyaya yazıp yerine taşır: doğrudan yazımda kesinti olursa
+    geriye bozuk JSON kalıyor, `kurallari_oku` onu sessizce `{}` sayıyor ve
+    öğrenilmiş tüm firma kuralları hiçbir uyarı olmadan siliniyordu.
+    """
+    gecici = str(yol) + ".tmp"
+    try:
+        with open(gecici, "w", encoding="utf-8") as f:
+            json.dump(kurallar, f, ensure_ascii=False, indent=2)
+        os.replace(gecici, yol)
+    except OSError:
+        try:
+            os.remove(gecici)
+        except OSError:
+            pass
+        raise
 
 
 def kural_uygula(satir: dict, kurallar: dict) -> dict:

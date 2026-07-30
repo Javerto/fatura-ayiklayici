@@ -68,10 +68,17 @@ def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
         return [], set()
     try:
         wb = load_workbook(cikti, data_only=True)
-    except Exception:
-        return [], set()
+    except Exception as e:
+        # Okunamayan dosyayı "kayıt yok" sayarsak bir sonraki onay onu
+        # sıfırdan yazar ve birikmiş tüm geçmiş gider. Okuyamıyorsak durmalıyız.
+        raise ExcelHatasi(
+            f"'{os.path.basename(cikti)}' okunamadı: {e}\n"
+            "Dosya bozuk veya başka bir programda açık olabilir. "
+            "Üzerine yazmamak için işlem durduruldu.") from e
 
-    ws = wb.active
+    # wb.active, dosyanın en son hangi sekmede kaydedildiğine bakar; kullanıcı
+    # Özet sekmesinde bırakıp kaydettiyse oranın hücreleri fatura sanılır.
+    ws = wb["Faturalar"] if "Faturalar" in wb.sheetnames else wb.worksheets[0]
     satirlar, islenenmis = [], set()
 
     for row in ws.iter_rows(min_row=2, max_col=SUTUN["kaynak"]):
@@ -253,12 +260,38 @@ def excel_olustur(satirlar: list, cikti: str):
 
     _ozet_sayfasi_yaz(wb, satirlar)
 
+    _guvenli_kaydet(wb, cikti)
+
+
+def _guvenli_kaydet(wb, cikti: str):
+    """Önce geçici dosyaya yazar, sonra yerine taşır.
+
+    Doğrudan `wb.save(cikti)` hedefi anında sıfırlıyor; yazma yarıda kesilirse
+    (disk dolu, ağ sürücüsü koptu, süreç öldürüldü) geriye yarım bir dosya
+    kalıyor ve birikmiş tüm fatura geçmişi gidiyordu. `os.replace` Windows'ta
+    atomiktir: ya eski dosya ya yenisi durur, arası yok.
+    """
+    gecici = cikti + ".tmp"
     try:
-        wb.save(cikti)
-    except PermissionError:
+        wb.save(gecici)
+        os.replace(gecici, cikti)
+    except PermissionError as e:
+        _sil(gecici)
         raise ExcelHatasi(
             f"'{os.path.basename(cikti)}' kaydedilemedi.\n"
-            "Dosya Excel'de açık olabilir. Kapatıp tekrar deneyin.")
+            "Dosya Excel'de açık olabilir. Kapatıp tekrar deneyin.") from e
+    except OSError as e:
+        _sil(gecici)
+        raise ExcelHatasi(
+            f"'{os.path.basename(cikti)}' kaydedilemedi: {e}\n"
+            "Mevcut dosyaya dokunulmadı.") from e
+
+
+def _sil(yol: str):
+    try:
+        os.remove(yol)
+    except OSError:
+        pass
 
 
 def _ozet_sayfasi_yaz(wb, satirlar: list):

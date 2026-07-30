@@ -14,7 +14,14 @@ from extraction import to_float, tarih_parse, veri_dogrula
     ("1000,50", 1000.50),       # sadece ondalık virgül
     ("1000.00", 1000.0),        # standart ondalık nokta
     ("14.5", 14.5),             # tek ondalık nokta — standart float kabul edilir
-    ("1.234.567", 1234567.0),   # çok parçalı TR binlik (float başarısız → fallback)
+    ("1.234.567", 1234567.0),   # çok parçalı TR binlik
+    ("1.234", 1234.0),          # tek gruplu TR binlik — eskiden 1,234 oluyordu
+    ("1,234.56", 1234.56),      # US format: son ayırıcı ondalıktır
+    ("1,234,567", 1234567.0),   # US binlik virgül (birden fazla virgül)
+    ("12,50 TL", 12.5),         # birim ekli — eskiden None oluyordu
+    ("₺1.234,56", 1234.56),     # sembol önde
+    ("-1.234,56", -1234.56),    # negatif
+    ("0.50", 0.5),              # ondalık nokta, binlik sanılmamalı
     (1234, 1234.0),             # int passthrough
     (12.5, 12.5),               # float passthrough
 ])
@@ -88,6 +95,15 @@ def test_veri_dogrula_eksik_tutar():
     v = _temiz_veri()
     v["vergiler_dahil_tutar"] = None
     assert ("vergiler_dahil_tutar", "Vergiler dahil tutar boş") in veri_dogrula(v)
+
+
+def test_veri_dogrula_bos_tarih():
+    """Boş tarih uyarısızdı: satır 'temiz' görünüp Excel'e tarihsiz yazılıyordu."""
+    v = _temiz_veri()
+    v["fatura_tarihi"] = ""
+    assert ("fatura_tarihi", "Fatura tarihi boş") in veri_dogrula(v)
+    v["fatura_tarihi"] = None
+    assert ("fatura_tarihi", "Fatura tarihi boş") in veri_dogrula(v)
 
 
 def test_veri_dogrula_okunmamis_tarih_string():

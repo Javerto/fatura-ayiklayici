@@ -105,6 +105,12 @@ def tarih_parse(tarih_str):
     return tarih_str
 
 
+# Sayının kendisi: baştaki/sondaki sembol ve birimleri ("₺", "TL", "adet") eler.
+_SAYI_KALIBI = re.compile(r"-?\d[\d.,]*")
+# Nokta yalnızca binlik ayırıcıysa: 1.234 · 1.234.567 (ama 14.5 veya 1000.00 değil)
+_BINLIK_NOKTA = re.compile(r"-?\d{1,3}(\.\d{3})+")
+
+
 def to_float(val):
     """String ya da sayıyı float'a çevirir, başaramazsa None döner.
 
@@ -117,20 +123,28 @@ def to_float(val):
         return None
     if isinstance(val, (int, float)):
         return float(val)
-    s = str(val).strip()
+
+    m = _SAYI_KALIBI.search(str(val))
+    if not m:
+        return None
+    s = m.group(0).rstrip(".,")      # "12,50 TL" → "12,50",  "1.234." → "1.234"
+
+    nokta, virgul = s.rfind("."), s.rfind(",")
+    if nokta >= 0 and virgul >= 0:
+        # İkisi de varsa SONRAKİ ayırıcı ondalıktır; diğeri binliktir.
+        # 1.234,56 → 1234.56   ·   1,234.56 → 1234.56
+        s = s.replace(",", "") if nokta > virgul \
+            else s.replace(".", "").replace(",", ".")
+    elif virgul >= 0:
+        # Tek virgül TR ondalığıdır (1000,50); birden fazlaysa binliktir (1,234,567).
+        s = s.replace(",", "") if s.count(",") > 1 else s.replace(",", ".")
+    elif _BINLIK_NOKTA.fullmatch(s):
+        # 1.234 / 1.234.567 → binlik nokta. 14.5 ve 1000.00 buraya girmez.
+        s = s.replace(".", "")
+
     try:
-        if "," in s:
-            # TR format: 1.234,56
-            return float(s.replace(".", "").replace(",", "."))
-        try:
-            # Standart: 1000.00 veya 1234
-            return float(s)
-        except ValueError:
-            # Son çare: yalnızca gerçek TR binlik nokta formatıysa (1.234, 1.234.567)
-            if re.match(r'^\d{1,3}(\.\d{3})+$', s):
-                return float(s.replace(".", ""))
-            return None
-    except (ValueError, TypeError):
+        return float(s)
+    except ValueError:
         return None
 
 
@@ -245,9 +259,11 @@ def veri_dogrula(veri: dict) -> list[tuple[str, str]]:
                      f"Örtük KDV oranı %{oran:.1f} bilinen oranlara "
                      f"(0/1/8/10/18/20) uymuyor — tutarları kontrol edin")
 
-    # fatura_tarihi — parse edilememiş string olarak kaldıysa
+    # fatura_tarihi — boş, ya da parse edilememiş string olarak kaldıysa
     tarih = veri.get("fatura_tarihi")
-    if isinstance(tarih, str) and tarih:
+    if not tarih:
+        ekle("fatura_tarihi", "Fatura tarihi boş")
+    elif isinstance(tarih, str):
         ekle("fatura_tarihi", f"Tarih okunamadı: '{tarih}'")
 
     # para_birimi — bilinen listede olmayan değer

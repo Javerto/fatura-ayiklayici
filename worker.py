@@ -17,7 +17,7 @@ import google.genai as genai
 from extraction import (
     xml_den_veri_cek, pdf_den_veri_cek, pdf_text_ayikla,
     APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
-    ModelHatasi,
+    ModelHatasi, ExcelHatasi,
     TIMEOUT_SANIYE, MAX_WORKERS, veri_dogrula,
     pdf_gecerli_mi,
 )
@@ -50,7 +50,12 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         islenmemis_pdf = [d for d in retry_dosyalar if not d.lower().endswith(".xml")]
         islenmemis_xml = [d for d in retry_dosyalar if d.lower().endswith(".xml")]
         toplam = len(islenmemis_pdf) + len(islenmemis_xml)
-        mevcut_satirlar, _ = mevcut_verileri_oku(CIKTI)
+        try:
+            mevcut_satirlar, _ = mevcut_verileri_oku(CIKTI)
+        except ExcelHatasi as e:
+            log("critical", str(e))
+            log_q.put(("done", ([], 0, [])))
+            return
         if toplam == 0:
             log("info", "Yeniden denenecek dosya bulunamadı.")
             log_q.put(("done", ([], 0, [])))
@@ -66,7 +71,12 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             log_q.put(("done", ([], 0, [])))
             return
 
-        mevcut_satirlar, islenenmis = mevcut_verileri_oku(CIKTI)
+        try:
+            mevcut_satirlar, islenenmis = mevcut_verileri_oku(CIKTI)
+        except ExcelHatasi as e:
+            log("critical", str(e))
+            log_q.put(("done", ([], 0, [])))
+            return
         if islenenmis:
             log("info", f"Mevcut Excel'de {len(islenenmis)} fatura var, sadece yeniler işlenecek.")
 
