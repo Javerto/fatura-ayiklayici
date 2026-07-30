@@ -157,14 +157,17 @@ function onayModal(baslik, mesaj, evetEtiket = "Devam et", tehlikeli = false) {
         <button class="btn-sec" id="oHayir">Vazgeç</button>
         <button class="${tehlikeli ? "btn-sec err" : "btn-primary"}" id="oEvet">${kacar(evetEtiket)}</button>
       </div>`);
-    const kapat = c => { p.remove(); cevapla(c); };
-    $("oHayir").onclick = () => kapat(false);
-    $("oEvet").onclick = () => kapat(true);
+    const esc = e => { if (e.key === "Escape") kapat(false); };
+    const kapat = c => {
+      document.removeEventListener("keydown", esc);   // butonla kapatınca da kaldır
+      p.remove();
+      cevapla(c);
+    };
+    p.querySelector("#oHayir").onclick = () => kapat(false);
+    p.querySelector("#oEvet").onclick = () => kapat(true);
     p.addEventListener("click", e => { if (e.target === p) kapat(false); });
-    document.addEventListener("keydown", function esc(e) {
-      if (e.key === "Escape") { document.removeEventListener("keydown", esc); kapat(false); }
-    });
-    $("oEvet").focus();
+    document.addEventListener("keydown", esc);
+    p.querySelector("#oEvet").focus();
   });
 }
 
@@ -175,9 +178,9 @@ function bilgiModal(baslik, mesaj) {
       <div class="aciklama">${kacar(mesaj)}</div>
       <div class="alt"><button class="btn-primary" id="bTamam">Tamam</button></div>`);
     const kapat = () => { p.remove(); cevapla(); };
-    $("bTamam").onclick = kapat;
+    p.querySelector("#bTamam").onclick = kapat;   // $() ilk eşleşmeyi bulur, üst üste modalda yanlış olur
     p.addEventListener("click", e => { if (e.target === p) kapat(); });
-    $("bTamam").focus();
+    p.querySelector("#bTamam").focus();
   });
 }
 
@@ -259,22 +262,31 @@ async function klasorSec() {
 }
 
 async function basla(retry) {
+  // Butonlar köprü gidiş-dönüşünden ÖNCE kilitlenmeli: aksi hâlde çift
+  // tıklama iki worker başlatıyor, ilk çalışmanın sonucu okunmayan bir
+  // kuyrukta kalıyor ve harcanan Gemini kotası boşa gidiyordu.
+  $("btnBasla").disabled = true;
+  $("btnRetry").disabled = true;
+
   const cevap = retry
     ? await pywebview.api.yeniden_dene()
     : await pywebview.api.basla({ klasor: D.klasor, cikti: $("ciktiAd").value,
                                   kalite: D.kalite });
-  if (cevap.hata === "api_key") { apiKeyModal(); return; }
-  if (cevap.hata) { bilgiSatiri(cevap.hata, "err"); return; }
+  if (cevap.hata) {
+    $("btnBasla").disabled = false;
+    $("btnRetry").disabled = !D.atlanan;
+    if (cevap.hata === "api_key") apiKeyModal();
+    else bilgiSatiri(cevap.hata, "err");
+    return;
+  }
 
   Object.assign(D, { calisiyor: true, siradaki: 0, toplam: 0, ok: 0, uyarili: 0,
                      atlanan: 0, paralar: {}, uyarilar: [], baslangic: Date.now() });
   feedTemizle();
   $("stNe").textContent = "hazırlanıyor…";
   $("stEta").textContent = "—";
-  $("btnBasla").disabled = true;
   $("btnDurdur").disabled = false;
   $("btnUyari").disabled = true;
-  $("btnRetry").disabled = true;
   $("btnExcel").disabled = true;
   durumTazele();
 }

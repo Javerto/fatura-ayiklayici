@@ -24,6 +24,7 @@ function reviewAc(o) {
   R.secili = 0;
   R.haric.clear(); R.hatirla.clear(); R.duzenlemeler = {};
   R.sadeceUyarili = false;
+  $("rvSuzge").textContent = "⚠ Sadece uyarılı";   // durumla birlikte etiket de sıfırlanmalı
   R.zoom = 1.0;
 
   $("rvAlt").textContent = o.kesildi
@@ -114,6 +115,24 @@ function rvSatirSec(i) {
     r.classList.toggle("on", +r.dataset.i === i));
 }
 
+/** Uyarıları alanların altına yazar — formu YENİDEN KURMADAN.
+
+    Formu `innerHTML` ile baştan çizmek, kullanıcı Tab'la bir sonraki alana
+    geçip yazmaya başladıysa yazdığı karakterleri siliyor ve odağı düşürüyordu. */
+function rvUyariGoster(s) {
+  const alanBasi = {};
+  for (const [alan, mesaj] of s.uyarilar) (alanBasi[alan] ||= []).push(mesaj);
+
+  $("rvForm").querySelectorAll(".f[data-alan]").forEach(f => {
+    const mesajlar = alanBasi[f.dataset.alan] || [];
+    f.classList.toggle("bad", mesajlar.length > 0);
+    f.querySelectorAll(".msg").forEach(e => e.remove());
+    for (const m of mesajlar)
+      f.insertAdjacentHTML("beforeend",
+        `<div class="msg"><span>⚠</span><span>${kacar(m)}</span></div>`);
+  });
+}
+
 /** Formdaki metinleri toplar; değişiklik varsa kaydeder ve yeniden doğrular. */
 async function rvUygula() {
   const s = R.satirlar.find(x => x.i === R.secili);
@@ -127,7 +146,9 @@ async function rvUygula() {
   R.duzenlemeler[s.i] = form;
   s.uyarilar = await pywebview.api.satir_dogrula(s.i, form);
   rvListeCiz();
-  rvSatirSec(s.i);          // uyarılar alanların altında tazelenir
+  // Bekleme sırasında başka faturaya geçilmiş olabilir; o durumda formu
+  // tazelemek ekranı kullanıcının bıraktığı satıra geri döndürürdü.
+  if (R.secili === s.i) rvUyariGoster(s);
 }
 
 // ═══ ÖNİZLEME ═══
@@ -144,6 +165,10 @@ async function rvOnizlemeYukle(sigdir = false) {
     return;
   }
   const c = await pywebview.api.onizleme(s.i, R.sayfa, R.zoom);
+  // Yanıt gecikirken başka faturaya geçilmiş olabilir. Bunu kontrol etmezsek
+  // panelde A faturasının formu, B faturasının belgesi durur — kullanıcı
+  // yanlış belgeye bakarak onay verir.
+  if (R.secili !== s.i) return;
   if (c.hata) { pv.innerHTML = `<div class="yok">${kacar(c.hata)}</div>`; return; }
 
   pv.innerHTML = `<img src="data:image/png;base64,${c.png}" alt="">`;
@@ -193,8 +218,13 @@ async function rvOnayla() {
   }
 
   rvKapat();
-  D.uyarilar = R.satirlar.filter(s => !R.haric.has(s.i) && s.uyarilar.length)
+  const yazilanlar = R.satirlar.filter(s => !R.haric.has(s.i));
+  D.uyarilar = yazilanlar.filter(s => s.uyarilar.length)
                          .map(s => ({ dosya: s.dosya, liste: s.uyarilar }));
+  // Durum kartı çıkarım anındaki sayıları gösteriyordu; kullanıcı gözden
+  // geçirmede uyarıları düzeltince ekranda çelişkili iki sayı kalıyordu.
+  D.uyarili = D.uyarilar.length;
+  D.ok = yazilanlar.length - D.uyarili;
   bitti({ yazilan: c.yazilan, atlanan: D.atlanan, cikti: c.cikti });
   if (c.dokunulmadi)
     bilgiSatiri("Tüm yeni faturalar hariç tutuldu, Excel'e dokunulmadı.");
@@ -202,10 +232,14 @@ async function rvOnayla() {
 }
 
 async function rvIptal() {
-  if (!await onayModal(
-        "İşlemi iptal et",
-        "Çıkarılan veriler ve yaptığınız düzeltmeler kaydedilmeyecek. Emin misiniz?",
-        "Evet, iptal et", true)) return;
+  if ($("rvIptal").disabled) return;      // çift tıklamada ikinci kutu açılmasın
+  $("rvIptal").disabled = true;
+  const onay = await onayModal(
+    "İşlemi iptal et",
+    "Çıkarılan veriler ve yaptığınız düzeltmeler kaydedilmeyecek. Emin misiniz?",
+    "Evet, iptal et", true);
+  $("rvIptal").disabled = false;
+  if (!onay) return;
   const c = await pywebview.api.review_iptal();
   rvKapat();
   D.uyarilar = [];

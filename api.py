@@ -75,6 +75,7 @@ class Api:
         self._atlanmis = []
         self._baslangic = 0.0
         self._review = None            # onay bekleyen worker çıktısı
+        self._calisiyor = False        # bir worker sürüyor mu
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
 
@@ -133,6 +134,11 @@ class Api:
 
     def basla(self, ayarlar: dict) -> dict:
         """İşlemi başlatır. Hata varsa {'hata': mesaj} döner."""
+        # Arayüz butonu kilitliyor ama JS bir güven sınırı: ikinci bir çağrı
+        # `_log_q`'yu değiştirip ilk worker'ın tüm çıktısını (harcanan kotayla
+        # birlikte) okunmayan bir kuyrukta bırakıyordu.
+        if self._calisiyor:
+            return {"hata": "Zaten bir işlem sürüyor."}
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if not api_key:
             return {"hata": "api_key"}
@@ -157,6 +163,7 @@ class Api:
                     "retry_dosyalar": retry},
             daemon=True,
         ).start()
+        self._calisiyor = True
         threading.Thread(target=self._pompa, daemon=True).start()
         return {"ok": True}
 
@@ -298,6 +305,18 @@ class Api:
         Gruplama şart: 5 paralel PDF saniyede onlarca olay üretebiliyor,
         her biri için ayrı evaluate_js çağrısı arayüzü kilitler.
         """
+        try:
+            self._pompa_dongusu()
+        except Exception as e:
+            # Pompa ölürse terminal olay hiç gitmez ve arayüz sonsuza dek
+            # "işleniyor"da kalır; kullanıcının tek çıkışı uygulamayı kapatmak.
+            self._js("olaylar", [{"t": "bitti", "hata": f"Beklenmedik hata: {e}",
+                                  "yazilan": 0, "atlanan": len(self._atlanmis),
+                                  "cikti": self._mevcut_cikti()}])
+        finally:
+            self._calisiyor = False
+
+    def _pompa_dongusu(self):
         bitti = False
         while not bitti:
             olaylar = []
@@ -417,7 +436,9 @@ class Api:
         try:
             gecmis = json.loads(GECMIS_DOSYASI.read_text("utf-8")) \
                      if GECMIS_DOSYASI.exists() else []
-        except ValueError:
+        except (OSError, ValueError):
+            gecmis = []        # dosya kilitli/bozuk: geçmişi atla, işlemi bozma
+        if not isinstance(gecmis, list):
             gecmis = []
         gecmis.append(kayit)
         try:
