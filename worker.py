@@ -10,6 +10,7 @@ import glob
 import os
 import queue
 import threading
+import time
 
 import google.genai as genai
 
@@ -93,15 +94,22 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         yeni_satirlar.append(veri)
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
-        tutar = veri.get("vergiler_dahil_tutar")
-        tutar_str = f"{tutar:,.2f} {veri.get('para_birimi', 'TL')}" if tutar else "-"
-        log("ok", f"✓  {(veri.get('fatura_no') or '-'):<20} "
-                  f"{(veri.get('sirket_adi') or '-')[:25]:<26} {tutar_str}")
         uyarilar = veri_dogrula(veri)
-        for u in uyarilar:
-            log("warn", f"   ⚠ {u}")
+        dosya_yolu = str(veri.get("dosya_yolu") or "")
+        dosya_adi = os.path.basename(dosya_yolu) or "bilinmiyor"
+        # Süre yalnızca arayüz içindir; Excel'e sızmasın diye pop ile alınır.
+        log_q.put(("fatura", {
+            "dosya":       dosya_adi,
+            "fatura_no":   veri.get("fatura_no") or "-",
+            "sirket_adi":  veri.get("sirket_adi") or "-",
+            "tutar":       veri.get("vergiler_dahil_tutar"),
+            "para_birimi": veri.get("para_birimi") or "TRY",
+            "kaynak":      veri.get("_teknik_bilgi")
+                           or ("XML" if dosya_yolu.lower().endswith(".xml") else ""),
+            "uyarilar":    uyarilar,
+            "sure":        veri.pop("_sure", None),
+        }))
         if uyarilar:
-            dosya_adi = os.path.basename(veri.get("dosya_yolu") or "bilinmiyor")
             uyari_listesi.append((dosya_adi, uyarilar))
 
     def _bitir(kesildi=False):
@@ -123,8 +131,13 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         nonlocal siradaki
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
-        log("skip", f"⚠  {dosya_adi}: {sebep}")
+        log_q.put(("atlandi", {"dosya": dosya_adi, "sebep": sebep}))
         atlanmis.append((dosya_adi, sebep))
+
+    def sureli(veri, t0):
+        """Çıkarılan satıra işlem süresini ekler (arayüzde gösterilir)."""
+        veri["_sure"] = round(time.time() - t0, 1)
+        return veri
 
     # ── PDF dosyaları (paralel) ────────────────────────────────────────
     api_hata = threading.Event()
@@ -134,10 +147,11 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             return None
         dosya_adi = os.path.basename(dosya)
         xml_yolu  = os.path.splitext(dosya)[0] + ".xml"
+        t0 = time.time()
         if os.path.exists(xml_yolu):
-            log("info", f"→  {dosya_adi[:60]}")
+            log_q.put(("isleniyor", dosya_adi))
             try:
-                return ("ok", xml_den_veri_cek(xml_yolu, dosya))
+                return ("ok", sureli(xml_den_veri_cek(xml_yolu, dosya), t0))
             except XMLHatasi as e:
                 return ("atla", (dosya_adi, str(e)))
             except Exception as e:
@@ -149,11 +163,11 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             # Metni bir kez çıkar; hem log etiketi hem de işleme için kullan
             metin = pdf_text_ayikla(dosya)
             tip_etiketi = "Dijital" if len(metin) > 100 else "OCR"
-            log("info", f"→  {dosya_adi[:50]:<51} ({tip_etiketi})")
+            log_q.put(("isleniyor", f"{dosya_adi} ({tip_etiketi})"))
 
             try:
-                return ("ok", pdf_den_veri_cek(dosya, client, log_q, stop_event,
-                                               zoom, metin=metin))
+                return ("ok", sureli(pdf_den_veri_cek(dosya, client, log_q,
+                                                      stop_event, zoom, metin=metin), t0))
             except APIKeyHatasi as e:
                 api_hata.set()
                 return ("critical", str(e))
@@ -200,9 +214,10 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             break
 
         dosya_adi = os.path.basename(xml_dosya)
-        log("info", f"→  {dosya_adi[:60]}")
+        log_q.put(("isleniyor", dosya_adi))
+        t0 = time.time()
         try:
-            islendi(xml_den_veri_cek(xml_dosya, None))
+            islendi(sureli(xml_den_veri_cek(xml_dosya, None), t0))
         except XMLHatasi as e:
             atla(dosya_adi, str(e))
         except Exception as e:

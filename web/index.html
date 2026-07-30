@@ -4,33 +4,96 @@
 <meta charset="utf-8">
 <title>Fatura Ayıklama</title>
 <link rel="stylesheet" href="tema.css">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%}
-body{
-  font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;
-  background:var(--panel);color:var(--tx);-webkit-font-smoothing:antialiased;
-  display:grid;place-items:center;text-align:center;
-}
-.ph h1{font-size:16px;font-weight:600;margin-bottom:6px}
-.ph p{font-size:13px;color:var(--dim);line-height:1.7}
-.ph code{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px;
-         background:var(--card);border:1px solid var(--line);
-         border-radius:6px;padding:2px 6px}
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="ph">
-    <h1>Fatura Ayıklama</h1>
-    <p>
-      İskelet çalışıyor — pencere <code id="boyut">…</code><br>
-      Arayüz 2. aşamada bu sayfaya gelecek.
-    </p>
+<div class="app">
+
+  <div class="top">
+    <div class="logo">📄</div>
+    <div style="min-width:0">
+      <h1>Fatura Ayıklama</h1>
+      <div class="sub" id="apiDurum">…</div>
+    </div>
+    <div class="sp"></div>
+    <button class="ico-btn" id="btnKey" title="API anahtarı">🔑</button>
+    <button class="ico-btn" id="btnGecmis" title="Geçmiş">🕐</button>
+    <div class="tema-wrap" id="temaWrap">
+      <button class="ico-btn" id="btnTema" title="Tema">◐</button>
+    </div>
   </div>
-<script>
-const yaz = () => document.getElementById("boyut").textContent =
-  `${window.innerWidth} × ${window.innerHeight}`;
-addEventListener("resize", yaz); yaz();
-</script>
+
+  <div class="body">
+
+    <span class="lbl">Kaynak klasör</span>
+    <div class="drop" id="klasorKart">
+      <div class="ic">📁</div>
+      <div class="g">
+        <div class="path bos" id="klasorYol">Henüz klasör seçilmedi</div>
+        <div class="meta" id="klasorMeta">Fatura PDF ve XML dosyalarının bulunduğu klasörü seçin</div>
+      </div>
+      <button class="btn-ghost" id="btnKlasor">Seç…</button>
+    </div>
+
+    <div class="row2">
+      <div>
+        <span class="lbl">Çıktı dosyası</span>
+        <div class="field">
+          <input id="ciktiAd" value="faturalar" spellcheck="false">
+          <span class="suffix">.xlsx</span>
+          <button class="in-btn" id="btnExcel" disabled>📂 Aç</button>
+        </div>
+      </div>
+      <div>
+        <span class="lbl">Okuma kalitesi</span>
+        <div class="seg" id="kaliteSeg">
+          <button data-k="1.0">Hızlı</button>
+          <button data-k="1.5" class="on">Normal</button>
+          <button data-k="2.0">Yüksek</button>
+          <button data-k="3.0">Maks</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" id="btnBasla">▶ İşlemi Başlat</button>
+      <button class="btn-sec err" id="btnDurdur" disabled>■ Durdur</button>
+      <button class="btn-sec warn" id="btnUyari" disabled>⚠ Uyarılar</button>
+      <button class="btn-sec" id="btnRetry" disabled>↺ Yeniden Dene</button>
+    </div>
+
+    <div class="status">
+      <div class="st-top">
+        <div class="st-count" id="stSayi">0 <span class="of">/ 0</span></div>
+        <div class="st-what" id="stNe">başlamak için klasör seçin</div>
+        <div class="sp"></div>
+        <div class="st-eta">
+          <div class="v" id="stEta">—</div>
+          <div class="k">kalan süre</div>
+        </div>
+      </div>
+      <div class="track"><div class="fill" id="stFill"></div></div>
+      <div class="st-break">
+        <span class="st-b ok"><span class="d"></span><b id="stOk">0</b> başarılı</span>
+        <span class="st-b warn"><span class="d"></span><b id="stWarn">0</b> uyarılı</span>
+        <span class="st-b err"><span class="d"></span><b id="stErr">0</b> atlanan</span>
+        <div class="sp"></div>
+        <span class="st-sum">Toplam <b id="stTutar">—</b></span>
+      </div>
+    </div>
+
+    <div class="log-head">
+      <span class="lbl">İşlem günlüğü</span>
+      <button class="btn-ghost" id="btnTemizle" style="padding:5px 11px;font-size:11.5px">Temizle</button>
+    </div>
+    <div class="feed" id="feed">
+      <div class="bos">Henüz işlem yapılmadı.<br>Klasör seçip “İşlemi Başlat”a basın.</div>
+    </div>
+
+  </div>
+</div>
+
+<script src="tema.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

@@ -13,6 +13,8 @@ import sys
 
 import webview
 
+from api import Api
+
 VERSION = "2.0"
 
 
@@ -23,9 +25,11 @@ def web_dosyasi(ad: str) -> str:
 
 
 def main():
-    webview.create_window(
+    api = Api()
+    api.pencere = webview.create_window(
         f"Fatura Ayıklama  v{VERSION}",
         web_dosyasi("index.html"),
+        js_api=api,
         width=1040, height=760,
         min_size=(760, 560),
     )
