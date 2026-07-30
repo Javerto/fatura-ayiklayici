@@ -53,7 +53,7 @@ python -m pytest          # tüm testler
 python -m pytest tests/test_xml.py -q   # tek dosya
 python -m pytest -k fatura_no           # isim filtresiyle
 ```
-122 tests. Coverage focuses on the pure, UI‑free logic: `_duzelt_fatura_no`, `_json_ayikla`, `to_float`, `tarih_parse`, `veri_dogrula`, the Excel URL/round‑trip helpers, `xml_den_veri_cek` (via `tests/fixtures/ornek_fatura.xml`), the Excel "Kaynak" column, and an end‑to‑end `worker` smoke test (XML‑only, `google.genai.Client` patched). It also covers `Api` (only callable public attributes — see below) and `pencere_boyutu`. `pytest.ini` filters third‑party `DeprecationWarning`s so output stays clean.
+148 tests. Coverage focuses on the pure, UI‑free logic: `_duzelt_fatura_no`, `_json_ayikla`, `to_float`, `tarih_parse`, `veri_dogrula`, the Excel URL/round‑trip helpers, `xml_den_veri_cek` (via `tests/fixtures/ornek_fatura.xml`), the Excel "Kaynak" column, and an end‑to‑end `worker` smoke test (XML‑only, `google.genai.Client` patched). It also covers `Api` (only callable public attributes — see below), `pencere_boyutu`, `review_onayla` (`tests/test_review_onayla.py` — the only path that writes Excel), and the **Python↔JS event contract** (`tests/test_olay_sozlesmesi.py`). `Api(kok=<path>)` takes the config directory per instance, so tests never touch the real `.env` / `gecmis.json` / `duzeltmeler.json`. `pytest.ini` filters third‑party `DeprecationWarning`s so output stays clean.
 
 **Headless tests cannot catch UI‑layer bugs.** Three real defects during the pywebview migration were invisible to pytest: the startup hang (needed a real `Window` object), the dead‑UI race, and zoom looking broken (CSS shrank a correctly‑enlarged PNG). Always launch the app and have the user look. `py-spy dump --pid <pid>` is the tool for a frozen window. When testing code that does intra‑module imports, patch where the name is used (e.g. `worker.pdf_text_ayikla`), not where it is defined.
 
@@ -88,6 +88,38 @@ python -m pytest -k fatura_no           # isim filtresiyle
 - **`gecmis.json`** – Log of previous runs (folder, output file name, processed count, duration). Also stored in AppData when frozen.
 - **`duzeltmeler.json`** – VKN bazlı öğrenen düzeltme kuralları. Frozen modda `%APPDATA%\FaturaAyiklayici`, değilse proje klasöründe.
 - **`faturalar.xlsx`** – Example output file (can be deleted).
+
+### Data‑safety rules (learned the hard way — a code review found all of these)
+- **Never read the invoice sheet via `wb.active`.** Excel stores the last active tab; if the user
+  saves while looking at “Özet”, that sheet's cells are read as invoices, `islenenmis` empties
+  (every PDF is re‑sent to Gemini) and the next approval replaces months of history with garbage.
+  Use `wb["Faturalar"]`.
+- **Never `wb.save(target)` directly.** `_guvenli_kaydet` writes a `.tmp` and `os.replace`s it;
+  a direct save truncates the target first, so an interrupted write destroys the archive.
+  `kurallari_yaz` follows the same pattern.
+- **An unreadable Excel must raise, not return empty.** Treating it as "no history" makes the next
+  approval rewrite the file from scratch. `mevcut_verileri_oku` raises `ExcelHatasi`; `worker`
+  catches it and stops.
+- **`to_float` rule: when both separators are present, the LAST one is the decimal.**
+  `1.234,56` and `1,234.56` both → `1234.56`. Dot‑only strings matching `\d{1,3}(\.\d{3})+`
+  are thousands (`1.234` → 1234; this silently produced 1,234 before and the VAT check could not
+  catch it because both amounts were corrupted identically).
+- **`excel_olustur` must wrap every `OSError`, not just `PermissionError`** — a raw error escapes
+  `api.py`'s `except ExcelHatasi`, reaches JS, and the review screen's “Onayla” button dies with
+  the user's edits still unsaved.
+
+### JS is a trust boundary
+`web/` can call any public `Api` method with any argument. Guard on the Python side, not only in
+the UI: `_satir()` checks `0 <= int(i) < len`, `basla()` refuses to start while `_calisiyor`
+(a double‑click used to spawn a second worker and silently discard the first run's output along
+with the Gemini quota it had spent). Disabling a button *after* `await` is too late.
+
+### Async in the review screen
+Every `await` in `review.js` is a point where the user may have selected another invoice. After
+awaiting, re‑check `R.secili` before touching the DOM — otherwise the form shows invoice A while
+the preview shows invoice B's document, and the user approves against the wrong page. Also never
+rebuild the form with `innerHTML` on edit: it eats characters typed after Tab and drops focus.
+`rvUyariGoster` updates warnings in place.
 
 ### Constants & Settings (extraction.py)
 - `GEMMA_MODEL = "gemma-4-31b-it"` — **Doğrulanmalı:** bu model adının `google-genai` üzerinden gerçekten erişilebilir olduğundan emin olun (`client.models.list` veya küçük bir test çağrısıyla). Geçersizse tüm PDF çıkarmaları başarısız olur. Gemma modelleri JSON‑mode/`response_schema` desteklemediği için JSON güvenilirliği `_json_ayikla`'nın dayanıklı ayrıştırmasına dayanır.
@@ -189,3 +221,6 @@ in light ones.
 - Adding new configuration options should consider both development and frozen environments (store in AppData when frozen).
 - New dialogs: use `onayModal`/`bilgiModal`; never `confirm`/`alert`, never a literal colour.
 - **Verify in the running app, not just in pytest.** The UI layer is where the real bugs were.
+- A guard test is worth writing only if you've seen it fail: put the bug back, watch the test go
+  red, then remove it. `test_main_pencereyi_genel_nitelige_atamaz` was written this way after the
+  older `test_api.py` turned out to miss the very regression its docstring claimed to cover.
