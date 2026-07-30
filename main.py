@@ -13,7 +13,7 @@ import sys
 
 import webview
 
-from api import Api
+from api import Api, EN_KUCUK_BOYUT, pencere_boyutu
 
 VERSION = "2.0"
 
@@ -30,13 +30,16 @@ def main():
     # API nesnesinin genel niteliklerine özyineleyerek girer (webview/util.py
     # get_functions). Window nesnesi js_api'ye geri işaret ettiği için bu
     # halkada dönüp uygulamayı açılışta dondurur.
-    api._pencere = webview.create_window(
+    genislik, yukseklik = pencere_boyutu()
+    pencere = webview.create_window(
         f"Fatura Ayıklama  v{VERSION}",
         web_dosyasi("index.html"),
         js_api=api,
-        width=1040, height=760,
-        min_size=(760, 560),
+        width=genislik, height=yukseklik,
+        min_size=EN_KUCUK_BOYUT,
     )
+    api._pencere = pencere
+    pencere.events.closing += api._pencere_kapaniyor
     webview.start()
 
 

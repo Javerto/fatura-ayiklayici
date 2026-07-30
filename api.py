@@ -41,6 +41,29 @@ DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
 
 GECERLI_TEMALAR = ("mocha", "macchiato", "frappe", "nord", "latte", "kagit")
 
+VARSAYILAN_BOYUT = (1040, 760)
+EN_KUCUK_BOYUT   = (760, 560)
+
+load_dotenv(dotenv_path=ENV_DOSYASI)
+
+
+def pencere_boyutu() -> tuple[int, int]:
+    """Kayıtlı pencere boyutu; kayıt yoksa veya bozuksa varsayılan.
+
+    Yalnızca boyut saklanır, konum değil: uzak masaüstünde çözünürlük
+    oturumlar arasında değişebiliyor ve kayıtlı bir konum pencereyi
+    ekran dışında bırakabilir.
+    """
+    try:
+        genislik, yukseklik = (int(p) for p in
+                               os.environ.get("PENCERE", "").lower().split("x"))
+    except ValueError:
+        return VARSAYILAN_BOYUT
+    if (EN_KUCUK_BOYUT[0] <= genislik <= 10000
+            and EN_KUCUK_BOYUT[1] <= yukseklik <= 10000):
+        return genislik, yukseklik
+    return VARSAYILAN_BOYUT
+
 
 class Api:
     def __init__(self):
@@ -54,7 +77,6 @@ class Api:
         self._review = None            # onay bekleyen worker çıktısı
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
-        load_dotenv(dotenv_path=ENV_DOSYASI)
 
     # ── Arayüzden çağrılanlar ────────────────────────────────────────
 
@@ -304,6 +326,14 @@ class Api:
 
             if gonderilecek:
                 self._js("olaylar", gonderilecek)
+
+    def _pencere_kapaniyor(self):
+        """Kapanışta pencere boyutunu sakla (main.py'de closing'e bağlanır)."""
+        try:
+            self._ayar_yaz("PENCERE",
+                           f"{int(self._pencere.width)}x{int(self._pencere.height)}")
+        except Exception:
+            pass          # boyut okunamazsa kapanışı engelleme
 
     def _mevcut_cikti(self) -> str:
         """Diskte gerçekten duran çıktı dosyasının yolu (yoksa boş)."""
