@@ -5,7 +5,7 @@
 
 /* ── Catppuccin Mocha (koyu — varsayılan) ── */
 html[data-tema="mocha"]{
-  --bg:#11111b; --panel:#181825; --card:#1e1e2e; --raised:#252537;
+  --panel:#181825; --card:#1e1e2e; --raised:#252537;
   --line:#2a2a3c; --line-soft:#22222f;
   --tx:#cdd6f4; --sub:#a6adc8; --dim:#6c7086;
   --accent:#89b4fa; --accent-2:#b4befe; --on-accent:#11111b;
@@ -17,7 +17,7 @@ html[data-tema="mocha"]{
 }
 /* ── Catppuccin Macchiato (koyu — yumuşak) ── */
 html[data-tema="macchiato"]{
-  --bg:#181926; --panel:#1e2030; --card:#24273a; --raised:#303348;
+  --panel:#1e2030; --card:#24273a; --raised:#303348;
   --line:#363a4f; --line-soft:#2a2d40;
   --tx:#cad3f5; --sub:#a5adcb; --dim:#6e738d;
   --accent:#8aadf4; --accent-2:#b7bdf8; --on-accent:#181926;
@@ -29,7 +29,7 @@ html[data-tema="macchiato"]{
 }
 /* ── Catppuccin Frappé (koyu — ılık) ── */
 html[data-tema="frappe"]{
-  --bg:#232634; --panel:#292c3c; --card:#303446; --raised:#3b3f53;
+  --panel:#292c3c; --card:#303446; --raised:#3b3f53;
   --line:#414559; --line-soft:#353950;
   --tx:#c6d0f5; --sub:#a5adce; --dim:#737994;
   --accent:#8caaee; --accent-2:#babbf1; --on-accent:#232634;
@@ -41,7 +41,7 @@ html[data-tema="frappe"]{
 }
 /* ── Nord (koyu — soğuk mavi) ── */
 html[data-tema="nord"]{
-  --bg:#242933; --panel:#2e3440; --card:#353c4a; --raised:#3f4756;
+  --panel:#2e3440; --card:#353c4a; --raised:#3f4756;
   --line:#434c5e; --line-soft:#3a4150;
   --tx:#e5e9f0; --sub:#c2cad8; --dim:#7b8494;
   --accent:#88c0d0; --accent-2:#8fbcbb; --on-accent:#242933;
@@ -53,7 +53,7 @@ html[data-tema="nord"]{
 }
 /* ── Catppuccin Latte (açık) ── */
 html[data-tema="latte"]{
-  --bg:#e4e7ee; --panel:#ffffff; --card:#f3f5f9; --raised:#e9ecf3;
+  --panel:#ffffff; --card:#f3f5f9; --raised:#e9ecf3;
   --line:#dde1e9; --line-soft:#edf0f5;
   --tx:#4c4f69; --sub:#6c6f85; --dim:#9ca0b0;
   --accent:#1e66f5; --accent-2:#7287fd; --on-accent:#ffffff;
@@ -65,7 +65,7 @@ html[data-tema="latte"]{
 }
 /* ── Kağıt (açık — sıcak, Solarized) ── */
 html[data-tema="kagit"]{
-  --bg:#e8e1cd; --panel:#fdf9ee; --card:#f4eeda; --raised:#eae3cc;
+  --panel:#fdf9ee; --card:#f4eeda; --raised:#eae3cc;
   --line:#e0d7bd; --line-soft:#efe9d7;
   --tx:#4a4438; --sub:#6b6355; --dim:#9c9280;
   --accent:#268bd2; --accent-2:#4a9fdb; --on-accent:#ffffff;

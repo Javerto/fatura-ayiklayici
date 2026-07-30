@@ -63,6 +63,8 @@ def test_worker_bos_klasor_uyari_verir(tmp_path):
     mesajlar = _kuyrugu_bosalt(log_q)
     tags = [t for t, _ in mesajlar]
     assert "critical" in tags  # "işlenecek PDF veya XML yok"
+    # Terminal olay da gitmeli: gitmezse arayüz sonsuza dek "işleniyor"da kalır.
+    assert "done" in tags
 
 
 def test_worker_kurallari_uygular(tmp_path):

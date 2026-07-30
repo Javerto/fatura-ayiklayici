@@ -161,7 +161,12 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         if os.path.exists(xml_yolu):
             log_q.put(("isleniyor", dosya_adi))
             try:
-                return ("ok", sureli(xml_den_veri_cek(xml_yolu, dosya), t0))
+                veri = xml_den_veri_cek(xml_yolu, dosya)
+                # dosya_yolu PDF'i gösterdiği için excel_utils'in .xml
+                # fallback'i tutmuyor; kaynağı burada işaretlemezsek
+                # Kaynak sütunu boş kalıyor.
+                veri.setdefault("_teknik_bilgi", "XML")
+                return ("ok", sureli(veri, t0))
             except XMLHatasi as e:
                 return ("atla", (dosya_adi, str(e)))
             except Exception as e:
@@ -190,10 +195,41 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         future_to_dosya = {executor.submit(pdf_gorevi, d): d for d in islenmemis_pdf}
         bekleyen = set(future_to_dosya.keys())
 
+        kritik_bildirildi = False
+
+        def biteni_topla(futures) -> bool:
+            """Tamamlanmış görevlerin sonucunu işler; devam edilsin mi döner.
+
+            Kritik hatada erken dönmez: aynı turda tamamlanmış diğer faturalar
+            da kaydedilmeli, yoksa cevabı gelmiş iş çöpe gider.
+            """
+            nonlocal kritik_bildirildi
+            devam = True
+            for future in futures:
+                if not future.done() or future.cancelled():
+                    continue
+                sonuc = future.result()
+                if sonuc is None:
+                    continue
+                tip, veri = sonuc
+                if tip == "ok":
+                    islendi(veri)
+                elif tip == "atla":
+                    atla(*veri)
+                elif tip == "critical":
+                    devam = False
+                    if not kritik_bildirildi:   # 5 thread aynı hatayı verebilir
+                        kritik_bildirildi = True
+                        log("critical", str(veri))
+            return devam
+
         while bekleyen:
             if stop_event.is_set():
                 for f in bekleyen:
                     f.cancel()
+                # Cevabı gelmiş ama henüz okunmamış faturaları atmadan al:
+                # API parası harcanmış, sonucu çöpe atmanın anlamı yok.
+                biteni_topla(bekleyen)
                 log("info", "İşlem kullanıcı tarafından durduruldu.")
                 break
 
@@ -201,21 +237,13 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
                 bekleyen, timeout=1,
                 return_when=concurrent.futures.FIRST_COMPLETED)
 
-            for future in biten:
-                result = future.result()
-                if result is None:
-                    continue
-                tip, veri = result
-                if tip == "ok":
-                    islendi(veri)
-                elif tip == "atla":
-                    atla(*veri)
-                elif tip == "critical":
-                    log("critical", str(veri))
-                    for f in bekleyen:
-                        f.cancel()
-                    _bitir(kesildi=True)
-                    return
+            if not biteni_topla(biten):          # API key hatası
+                for f in bekleyen:
+                    f.cancel()
+                # Aynı turda tamamlanmış diğer faturalar da kurtarılmalı.
+                biteni_topla(bekleyen)
+                _bitir(kesildi=True)
+                return
 
     # ── XML-only dosyalar ──────────────────────────────────────────────
     for xml_dosya in islenmemis_xml:

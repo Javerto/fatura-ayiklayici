@@ -66,7 +66,14 @@ def pencere_boyutu() -> tuple[int, int]:
 
 
 class Api:
-    def __init__(self):
+    def __init__(self, kok: pathlib.Path | None = None):
+        # Ayar dosyaları örnek başına: modül sabiti olduklarında `review_onayla`
+        # gibi yazan yolları test etmek geliştiricinin gerçek .env / gecmis.json
+        # / duzeltmeler.json dosyalarını kirletiyordu.
+        kok = pathlib.Path(kok) if kok else _BASE
+        self._env      = kok / ".env"
+        self._gecmis   = kok / "gecmis.json"
+        self._duzeltme = kok / "duzeltmeler.json"
         self._pencere = None
         self._log_q = queue.Queue()
         self._stop_event = threading.Event()
@@ -159,7 +166,7 @@ class Api:
             target=worker,
             args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
             kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
-                    "kurallar": kurallari_oku(DUZELTME_DOSYASI),
+                    "kurallar": kurallari_oku(self._duzeltme),
                     "retry_dosyalar": retry},
             daemon=True,
         ).start()
@@ -191,11 +198,26 @@ class Api:
 
     # ── Gözden geçirme ekranı ────────────────────────────────────────
 
+    def _satir(self, i):
+        """Gözden geçirme satırı; geçersiz indekste None.
+
+        JS bir güven sınırı: `i >= len` kontrolü negatif indeksi geçiriyordu
+        (i = -1 sessizce son satırı döndürür) ve sayı olmayan değerde
+        TypeError atıyordu.
+        """
+        if not self._review:
+            return None
+        try:
+            i = int(i)
+        except (TypeError, ValueError):
+            return None
+        yeni = self._review["yeni"]
+        return yeni[i] if 0 <= i < len(yeni) else None
+
     def satir_dogrula(self, i: int, form: dict) -> list:
         """Formdaki hâliyle satırın uyarıları — düzenleme sırasında çağrılır."""
-        if not self._review or i >= len(self._review["yeni"]):
-            return []
-        return veri_dogrula(form_satira_uygula(self._review["yeni"][i], form))
+        satir = self._satir(i)
+        return veri_dogrula(form_satira_uygula(satir, form)) if satir else []
 
     def review_onayla(self, duzenlemeler: dict, haric: list,
                       hatirla: list) -> dict:
@@ -210,8 +232,12 @@ class Api:
 
         yeni = list(self._review["yeni"])
         for anahtar, form in (duzenlemeler or {}).items():
-            i = int(anahtar)
-            yeni[i] = form_satira_uygula(yeni[i], form)
+            try:
+                i = int(anahtar)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= i < len(yeni):
+                yeni[i] = form_satira_uygula(yeni[i], form)
 
         haric_kume = {int(x) for x in (haric or [])}
         nihai = nihai_satirlar(self._review["mevcut"], yeni, haric_kume)
@@ -238,14 +264,27 @@ class Api:
 
     def review_iptal(self) -> dict:
         self._review = None
+        self._onizlemeyi_kapat()
         self._gecmis_kaydet(0, len(self._atlanmis))
         return {"ok": True, "cikti": self._mevcut_cikti()}
 
+    def _onizlemeyi_kapat(self):
+        """Açık PDF'i bırak — yoksa MuPDF dosyayı süreç boyunca kilitli tutar
+        ve kullanıcı o faturayı Explorer'da taşıyamaz/silemez."""
+        if self._pdf_doc is not None:
+            try:
+                self._pdf_doc.close()
+            except Exception:
+                pass
+            self._pdf_doc = None
+            self._pdf_yol = None
+
     def onizleme(self, i: int, sayfa: int, zoom: float) -> dict:
         """Faturanın PDF sayfasını PNG olarak döndürür (base64)."""
-        if not self._review or i >= len(self._review["yeni"]):
+        satir = self._satir(i)
+        if satir is None:
             return {"hata": "Önizleme yok"}
-        yol = str(self._review["yeni"][i].get("dosya_yolu") or "")
+        yol = str(satir.get("dosya_yolu") or "")
         if not yol.lower().endswith(".pdf") or not os.path.exists(yol):
             return {"hata": "Bu fatura için PDF yok"}
         try:
@@ -265,9 +304,10 @@ class Api:
 
     def dosya_ac(self, i: int) -> bool:
         """Faturanın kaynak dosyasını sistem uygulamasında açar."""
-        if not self._review or i >= len(self._review["yeni"]):
+        satir = self._satir(i)
+        if satir is None:
             return False
-        yol = str(self._review["yeni"][i].get("dosya_yolu") or "")
+        yol = str(satir.get("dosya_yolu") or "")
         if yol and os.path.exists(yol):
             os.startfile(yol)
             return True
@@ -275,7 +315,7 @@ class Api:
 
     def gecmis(self) -> list:
         try:
-            kayitlar = json.loads(GECMIS_DOSYASI.read_text("utf-8"))
+            kayitlar = json.loads(self._gecmis.read_text("utf-8"))
         except (OSError, ValueError):
             return []
         return list(reversed(kayitlar[-20:]))
@@ -284,7 +324,7 @@ class Api:
 
     def _ayar_yaz(self, anahtar: str, deger: str) -> bool:
         try:
-            set_key(str(ENV_DOSYASI), anahtar, deger)
+            set_key(str(self._env), anahtar, deger)
         except OSError:
             return False
         os.environ[anahtar] = deger
@@ -389,25 +429,10 @@ class Api:
                 "kesildi": payload.get("kesildi", False),
                 "atlanan": len(payload["atlanmis"])}
 
-    def _excel_yaz(self, payload: dict) -> dict:
-        self._atlanmis = payload["atlanmis"]
-        try:
-            excel_olustur(payload["mevcut"] + payload["yeni"], payload["cikti"])
-        except ExcelHatasi as e:
-            self._gecmis_kaydet(0, len(payload["atlanmis"]))
-            return {"t": "bitti", "hata": str(e), "yazilan": 0,
-                    "atlanan": len(payload["atlanmis"]),
-                    "cikti": self._mevcut_cikti()}
-        self._cikti = payload["cikti"]
-        yazilan = len(payload["yeni"])
-        self._gecmis_kaydet(yazilan, len(payload["atlanmis"]))
-        return {"t": "bitti", "yazilan": yazilan,
-                "atlanan": len(payload["atlanmis"]), "cikti": payload["cikti"]}
-
     def _kurallari_ogren(self, satirlar: list, hatirla: list,
                          haric: set) -> int:
         """'Firma için hatırla' işaretli satırlardan VKN bazlı kural üretir."""
-        kurallar = kurallari_oku(DUZELTME_DOSYASI)
+        kurallar = kurallari_oku(self._duzeltme)
         eklenen = 0
         for i in {int(x) for x in (hatirla or [])} - haric:
             if i >= len(satirlar):
@@ -419,7 +444,7 @@ class Api:
                 eklenen += 1
         if eklenen:
             try:
-                kurallari_yaz(DUZELTME_DOSYASI, kurallar)
+                kurallari_yaz(self._duzeltme, kurallar)
             except OSError:
                 return 0
         return eklenen
@@ -434,15 +459,15 @@ class Api:
             "sure_dk": round((time.time() - self._baslangic) / 60, 1),
         }
         try:
-            gecmis = json.loads(GECMIS_DOSYASI.read_text("utf-8")) \
-                     if GECMIS_DOSYASI.exists() else []
+            gecmis = json.loads(self._gecmis.read_text("utf-8")) \
+                     if self._gecmis.exists() else []
         except (OSError, ValueError):
             gecmis = []        # dosya kilitli/bozuk: geçmişi atla, işlemi bozma
         if not isinstance(gecmis, list):
             gecmis = []
         gecmis.append(kayit)
         try:
-            GECMIS_DOSYASI.write_text(
+            self._gecmis.write_text(
                 json.dumps(gecmis[-100:], ensure_ascii=False, indent=2), "utf-8")
         except OSError:
             pass

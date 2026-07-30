@@ -5,7 +5,7 @@ echo   Fatura Ayiklayici - EXE Derleme
 echo ============================================
 echo.
 
-echo [1/6] Uygulama ikonu olusturuluyor...
+echo [1/5] Uygulama ikonu olusturuluyor...
 if exist "icon.ico" del "icon.ico"
 python -c "import struct, base64; png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAWElEQVR42mNgGAWDFeiHTPtPLh51wIA7YMGuF/8H3AEUO4IaDqDIEdRyANmOoMQBVEmYow5A1gwEd/Dh0SgYTQPEpI3RKBhNA6NRMOqAUQeMOmC0r4kLAAAnW4FDe82NqwAAAABJRU5ErkJggg=='); ico = struct.pack('<HHH', 0, 1, 1); ico += struct.pack('<BBBBHHII', 32, 32, 0, 0, 1, 32, len(png), 22); ico += png; open('icon.ico', 'wb').write(ico); print('icon.ico olusturuldu.')"
 if not exist "icon.ico" (
@@ -13,7 +13,7 @@ if not exist "icon.ico" (
     pause & exit /b 1
 )
 
-echo [2/6] Temiz sanal ortam olusturuluyor...
+echo [2/5] Temiz sanal ortam olusturuluyor...
 if exist ".venv_build" rmdir /s /q ".venv_build"
 python -m venv .venv_build
 if errorlevel 1 (
@@ -21,14 +21,14 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 
-echo [3/6] Sadece gerekli kutuphaneler kuruluyor...
+echo [3/5] Sadece gerekli kutuphaneler kuruluyor...
 .venv_build\Scripts\pip install --quiet google-genai pymupdf python-dotenv openpyxl pywebview pyinstaller
 if errorlevel 1 (
     echo HATA: Kutuphane kurulumu basarisiz.
     pause & exit /b 1
 )
 
-echo [4/6] EXE olusturuluyor...
+echo [4/5] EXE olusturuluyor...
 .venv_build\Scripts\pyinstaller ^
     --onefile ^
     --windowed ^
@@ -43,10 +43,11 @@ echo [4/6] EXE olusturuluyor...
     --hidden-import clr_loader ^
     main.py
 
-echo [5/6] Temizlik yapiliyor...
+echo [5/5] Temizlik yapiliyor...
 if exist ".venv_build" rmdir /s /q ".venv_build"
 if exist "build" rmdir /s /q "build"
-rem icon.ico ve spec dosyasi silinmiyor (pyinstaller icon.ico'ya ihtiyac duyuyor)
+rem icon.ico korunuyor: pyinstaller derleme sirasinda ona ihtiyac duyuyor.
+rem spec dosyasi zaten .gitignore'da ve her derlemede main.py'den uretiliyor.
 
 echo.
 if exist "dist\FaturaAyiklayici.exe" (

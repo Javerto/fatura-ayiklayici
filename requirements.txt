@@ -3,3 +3,6 @@ pymupdf
 python-dotenv
 openpyxl
 pywebview
+
+# Gelistirme
+pytest
