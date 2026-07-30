@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="app">
+<div class="app" id="anaEkran">
 
   <div class="top">
     <div class="logo">📄</div>
@@ -93,7 +93,72 @@
   </div>
 </div>
 
+<!-- ═══ GÖZDEN GEÇİRME EKRANI ═══ -->
+<div class="rv" id="review" hidden>
+  <div class="top">
+    <div style="min-width:0">
+      <h1>Faturaları Gözden Geçir</h1>
+      <div class="sub" id="rvAlt">Onaylayana kadar Excel'e hiçbir şey yazılmaz</div>
+    </div>
+    <div class="sp"></div>
+    <div class="pill ok" id="rvTemiz">✓ 0 temiz</div>
+    <div class="pill warn" id="rvUyarili" hidden>⚠ 0 kontrol edilmeli</div>
+  </div>
+
+  <div class="cols">
+    <div class="col">
+      <div class="col-head">
+        <span class="lbl" id="rvSayi">0 yeni fatura</span>
+        <div class="sp"></div>
+        <button class="btn-ghost" id="rvSuzge" style="padding:4px 9px;font-size:11px">⚠ Sadece uyarılı</button>
+      </div>
+      <div class="list" id="rvListe"></div>
+    </div>
+
+    <div class="col">
+      <div class="col-head">
+        <span class="lbl">Düzenle</span>
+        <div class="sp"></div>
+        <span class="dar-not">önizleme için pencereyi genişletin</span>
+      </div>
+      <div class="rvform" id="rvForm"></div>
+    </div>
+
+    <div class="col pv-col">
+      <div class="col-head">
+        <span class="lbl">Kaynak belge</span>
+        <div class="sp"></div>
+        <span class="fn" id="rvDosya"></span>
+      </div>
+      <div class="pv" id="rvPv"><div class="yok">Fatura seçin</div></div>
+      <div class="pv-bar">
+        <button class="zbtn" id="rvZoomEksi">−</button>
+        <button class="zbtn" id="rvZoomArti">+</button>
+        <span class="pg" id="rvZoom">%100</span>
+        <div class="sp"></div>
+        <button class="zbtn" id="rvOnceki">◀</button>
+        <span class="pg" id="rvSayfa">— / —</span>
+        <button class="zbtn" id="rvSonraki">▶</button>
+        <div class="sp"></div>
+        <button class="btn-ghost" id="rvDisAc" style="padding:6px 10px;font-size:11.5px">↗ Dışarıda aç</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <label class="chk"><input type="checkbox" id="rvHaric"> Bu faturayı hariç tut</label>
+    <div class="sep"></div>
+    <button class="btn-ghost warn" id="rvGeriUyari">◀ Önceki uyarı</button>
+    <button class="btn-ghost warn" id="rvIleriUyari">Sonraki uyarı ▶</button>
+    <div class="sp"></div>
+    <span class="sayac" id="rvYazilacak"></span>
+    <button class="btn-sec err" id="rvIptal">İptal</button>
+    <button class="btn-primary" id="rvOnayla">Onayla ve Excel'e Yaz</button>
+  </div>
+</div>
+
 <script src="tema.js"></script>
 <script src="app.js"></script>
+<script src="review.js"></script>
 </body>
 </html>

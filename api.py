@@ -8,6 +8,7 @@ gruplayıp `window.olaylar([...])` ile arayüze iletir.
 Eski `gui.py`'nin tkinter'dan bağımsız tüm sorumlulukları buraya taşındı.
 """
 
+import base64
 import json
 import os
 import pathlib
@@ -16,11 +17,15 @@ import sys
 import threading
 import time
 
+import fitz
 import webview
 from dotenv import load_dotenv, set_key
 
-from duzeltme import kurallari_oku
+from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import ExcelHatasi, excel_olustur
+from extraction import veri_dogrula
+from review import (DUZENLENEBILIR_ALANLAR, form_satira_uygula, nihai_satirlar,
+                    ogrenilecek_alanlar, satir_form_degerleri)
 from worker import worker
 
 # EXE modunda ayarlar AppData'ya yazılır (kullanıcı görmez/silemez).
@@ -46,6 +51,9 @@ class Api:
         self._cikti = ""
         self._atlanmis = []
         self._baslangic = 0.0
+        self._review = None            # onay bekleyen worker çıktısı
+        self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
+        self._pdf_yol = None
         load_dotenv(dotenv_path=ENV_DOSYASI)
 
     # ── Arayüzden çağrılanlar ────────────────────────────────────────
@@ -75,7 +83,7 @@ class Api:
 
     def klasor_sec(self) -> str:
         """Klasör seçtirir ve içindeki fatura sayısını döndürür."""
-        secim = self._pencere.create_file_dialog(webview.FOLDER_DIALOG)
+        secim = self._pencere.create_file_dialog(webview.FileDialog.FOLDER)
         if not secim:
             return ""
         self._klasor = secim[0] if isinstance(secim, (list, tuple)) else secim
@@ -144,6 +152,90 @@ class Api:
             return True
         return False
 
+    # ── Gözden geçirme ekranı ────────────────────────────────────────
+
+    def satir_dogrula(self, i: int, form: dict) -> list:
+        """Formdaki hâliyle satırın uyarıları — düzenleme sırasında çağrılır."""
+        if not self._review or i >= len(self._review["yeni"]):
+            return []
+        return veri_dogrula(form_satira_uygula(self._review["yeni"][i], form))
+
+    def review_onayla(self, duzenlemeler: dict, haric: list,
+                      hatirla: list) -> dict:
+        """Düzenlemeleri uygular, kuralları öğrenir ve Excel'i yazar.
+
+        duzenlemeler: {"<i>": {alan: metin}} — yalnızca dokunulan satırlar
+        haric:        [i, ...]  Excel'e yazılmayacak satırlar
+        hatirla:      [i, ...]  firma kuralı olarak kaydedilecek satırlar
+        """
+        if not self._review:
+            return {"hata": "Gözden geçirilecek veri yok."}
+
+        yeni = list(self._review["yeni"])
+        for anahtar, form in (duzenlemeler or {}).items():
+            i = int(anahtar)
+            yeni[i] = form_satira_uygula(yeni[i], form)
+
+        haric_kume = {int(x) for x in (haric or [])}
+        nihai = nihai_satirlar(self._review["mevcut"], yeni, haric_kume)
+
+        if len(nihai) == len(self._review["mevcut"]):
+            # Tüm yeni faturalar hariç tutuldu — mevcut Excel'e dokunma.
+            self._gecmis_kaydet(0, len(self._atlanmis))
+            self._review = None
+            return {"ok": True, "yazilan": 0, "dokunulmadi": True,
+                    "cikti": self._mevcut_cikti()}
+
+        try:
+            excel_olustur(nihai, self._review["cikti"])
+        except ExcelHatasi as e:
+            return {"hata": str(e)}          # pencere açık kalsın, düzenlemeler kaybolmasın
+
+        self._cikti = self._review["cikti"]
+        kaydedilen = self._kurallari_ogren(yeni, hatirla, haric_kume)
+        yazilan = len(nihai) - len(self._review["mevcut"])
+        self._gecmis_kaydet(yazilan, len(self._atlanmis))
+        self._review = None
+        return {"ok": True, "yazilan": yazilan, "kural": kaydedilen,
+                "cikti": self._cikti}
+
+    def review_iptal(self) -> dict:
+        self._review = None
+        self._gecmis_kaydet(0, len(self._atlanmis))
+        return {"ok": True, "cikti": self._mevcut_cikti()}
+
+    def onizleme(self, i: int, sayfa: int, zoom: float) -> dict:
+        """Faturanın PDF sayfasını PNG olarak döndürür (base64)."""
+        if not self._review or i >= len(self._review["yeni"]):
+            return {"hata": "Önizleme yok"}
+        yol = str(self._review["yeni"][i].get("dosya_yolu") or "")
+        if not yol.lower().endswith(".pdf") or not os.path.exists(yol):
+            return {"hata": "Bu fatura için PDF yok"}
+        try:
+            if self._pdf_yol != yol:
+                if self._pdf_doc is not None:
+                    self._pdf_doc.close()
+                self._pdf_doc = fitz.open(yol)
+                self._pdf_yol = yol
+            n = self._pdf_doc.page_count
+            sayfa = max(0, min(int(sayfa), n - 1))
+            zoom = max(0.5, min(3.0, float(zoom)))
+            pix = self._pdf_doc[sayfa].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+            return {"png": base64.b64encode(pix.tobytes("png")).decode(),
+                    "sayfa": sayfa, "toplam": n}
+        except Exception as e:
+            return {"hata": f"Önizleme yüklenemedi: {e}"}
+
+    def dosya_ac(self, i: int) -> bool:
+        """Faturanın kaynak dosyasını sistem uygulamasında açar."""
+        if not self._review or i >= len(self._review["yeni"]):
+            return False
+        yol = str(self._review["yeni"][i].get("dosya_yolu") or "")
+        if yol and os.path.exists(yol):
+            os.startfile(yol)
+            return True
+        return False
+
     def gecmis(self) -> list:
         try:
             kayitlar = json.loads(GECMIS_DOSYASI.read_text("utf-8"))
@@ -192,7 +284,10 @@ class Api:
             gonderilecek = []
             for tag, veri in olaylar:
                 if tag == "review":
-                    gonderilecek.append(self._excel_yaz(veri))
+                    # Satırlar Python'da kalır; arayüze yalnızca metin
+                    # izdüşümü gider (datetime/float JSON'da tur atmasın).
+                    self._review = veri
+                    gonderilecek.append(self._review_olayi(veri))
                     bitti = True
                 elif tag == "done":
                     atlanmis, islenen, _uyarilar = veri
@@ -214,9 +309,30 @@ class Api:
         """Diskte gerçekten duran çıktı dosyasının yolu (yoksa boş)."""
         return self._cikti if self._cikti and os.path.exists(self._cikti) else ""
 
+    def _review_olayi(self, payload: dict) -> dict:
+        """Gözden geçirme ekranının ihtiyaç duyduğu metin izdüşümü."""
+        self._atlanmis = payload["atlanmis"]
+        satirlar = []
+        for i, satir in enumerate(payload["yeni"]):
+            yol = str(satir.get("dosya_yolu") or "")
+            satirlar.append({
+                "i":        i,
+                "form":     satir_form_degerleri(satir),
+                "uyarilar": veri_dogrula(satir),
+                "dosya":    os.path.basename(yol),
+                "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
+                "kaynak":   satir.get("_teknik_bilgi")
+                            or ("XML" if yol.lower().endswith(".xml") else ""),
+            })
+        return {"t": "review", "satirlar": satirlar,
+                # Alan adı/etiketleri Python'dan gelir; arayüz yalnızca
+                # gruplamayı bilir, yeni alan eklenirse kendiliğinden görünür.
+                "alanlar": [list(a) for a in DUZENLENEBILIR_ALANLAR],
+                "mevcut_sayi": len(payload["mevcut"]),
+                "kesildi": payload.get("kesildi", False),
+                "atlanan": len(payload["atlanmis"])}
+
     def _excel_yaz(self, payload: dict) -> dict:
-        # ponytail: geçici — 4. aşamada gözden geçirme ekranı araya girecek.
-        # Şu an çıkarılan her satır doğrudan Excel'e yazılıyor.
         self._atlanmis = payload["atlanmis"]
         try:
             excel_olustur(payload["mevcut"] + payload["yeni"], payload["cikti"])
@@ -230,6 +346,26 @@ class Api:
         self._gecmis_kaydet(yazilan, len(payload["atlanmis"]))
         return {"t": "bitti", "yazilan": yazilan,
                 "atlanan": len(payload["atlanmis"]), "cikti": payload["cikti"]}
+
+    def _kurallari_ogren(self, satirlar: list, hatirla: list,
+                         haric: set) -> int:
+        """'Firma için hatırla' işaretli satırlardan VKN bazlı kural üretir."""
+        kurallar = kurallari_oku(DUZELTME_DOSYASI)
+        eklenen = 0
+        for i in {int(x) for x in (hatirla or [])} - haric:
+            if i >= len(satirlar):
+                continue
+            vkn = str(satirlar[i].get("vkn") or "").strip()
+            alanlar = ogrenilecek_alanlar(satirlar[i])
+            if vkn and alanlar:
+                kurallar = kural_ekle(kurallar, vkn, alanlar)
+                eklenen += 1
+        if eklenen:
+            try:
+                kurallari_yaz(DUZELTME_DOSYASI, kurallar)
+            except OSError:
+                return 0
+        return eklenen
 
     def _gecmis_kaydet(self, islenen: int, atlanan: int):
         kayit = {

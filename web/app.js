@@ -107,6 +107,9 @@ window.olaylar = function (liste) {
       case "info":
         bilgiSatiri(o.d.trim());
         break;
+      case "review":
+        reviewAc(o);
+        break;
       case "bitti":
         bitti(o);
         break;
@@ -141,6 +144,41 @@ function modal(html, genis) {
   p.addEventListener("click", e => { if (e.target === p) p.remove(); });
   document.body.appendChild(p);
   return p;
+}
+
+/* Tarayıcının confirm/alert kutuları WebView2'de "127.0.0.1:… diyor ki"
+   başlığıyla çıkıyor; kendi kutularımızı kullanıyoruz. */
+function onayModal(baslik, mesaj, evetEtiket = "Devam et", tehlikeli = false) {
+  return new Promise(cevapla => {
+    const p = modal(`
+      <h2>${kacar(baslik)}</h2>
+      <div class="aciklama">${kacar(mesaj)}</div>
+      <div class="alt">
+        <button class="btn-sec" id="oHayir">Vazgeç</button>
+        <button class="${tehlikeli ? "btn-sec err" : "btn-primary"}" id="oEvet">${kacar(evetEtiket)}</button>
+      </div>`);
+    const kapat = c => { p.remove(); cevapla(c); };
+    $("oHayir").onclick = () => kapat(false);
+    $("oEvet").onclick = () => kapat(true);
+    p.addEventListener("click", e => { if (e.target === p) kapat(false); });
+    document.addEventListener("keydown", function esc(e) {
+      if (e.key === "Escape") { document.removeEventListener("keydown", esc); kapat(false); }
+    });
+    $("oEvet").focus();
+  });
+}
+
+function bilgiModal(baslik, mesaj) {
+  return new Promise(cevapla => {
+    const p = modal(`
+      <h2>${kacar(baslik)}</h2>
+      <div class="aciklama">${kacar(mesaj)}</div>
+      <div class="alt"><button class="btn-primary" id="bTamam">Tamam</button></div>`);
+    const kapat = () => { p.remove(); cevapla(); };
+    $("bTamam").onclick = kapat;
+    p.addEventListener("click", e => { if (e.target === p) kapat(); });
+    $("bTamam").focus();
+  });
 }
 
 function apiKeyModal() {
@@ -271,6 +309,7 @@ async function acilis() {
     pywebview.api.kalite_kaydet(D.kalite);
   };
 
+  reviewKur();
   if (!d.api_key_var) setTimeout(apiKeyModal, 400);
 }
 
