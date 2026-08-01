@@ -122,7 +122,7 @@ rebuild the form with `innerHTML` on edit: it eats characters typed after Tab an
 `rvUyariGoster` updates warnings in place.
 
 ### Constants & Settings (extraction.py)
-- `GEMMA_MODEL = "gemma-4-31b-it"` — **Doğrulanmalı:** bu model adının `google-genai` üzerinden gerçekten erişilebilir olduğundan emin olun (`client.models.list` veya küçük bir test çağrısıyla). Geçersizse tüm PDF çıkarmaları başarısız olur. Gemma modelleri JSON‑mode/`response_schema` desteklemediği için JSON güvenilirliği `_json_ayikla`'nın dayanıklı ayrıştırmasına dayanır.
+- `GEMMA_MODEL = "gemma-4-31b-it"` — **2026‑08‑01'de doğrulandı:** `client.models.list()` çıktısında var (`models/gemma-4-31b-it`) ve gerçek bir üretim çağrısı yanıt döndürüyor. Gemma modelleri JSON‑mode/`response_schema` desteklemediği için JSON güvenilirliği `_json_ayikla`'nın dayanıklı ayrıştırmasına dayanır.
 - `MAX_DENEME = 5` – Retry attempts for transient API errors.
 - `TIMEOUT_SANIYE = 180` – Request timeout.
 - `MAX_WORKERS = 5` – Parallel PDF processing threads.
