@@ -1,17 +1,18 @@
 """pdf_den_veri_cek — dışarıdan verilen metni kullanma (çift çıkarmayı önleme)."""
 
-import queue
-from unittest.mock import MagicMock
-
 import extraction
 
 
-def _fake_client(json_text):
-    resp = MagicMock()
-    resp.text = json_text
-    client = MagicMock()
-    client.models.generate_content.return_value = resp
-    return client
+class SahteIstemci:
+    """gemini.ModelIstemcisi'nin yerine geçer: tek metot, sabit yanıt."""
+
+    def __init__(self, json_text):
+        self._yanit = json_text
+        self.parcalar = None
+
+    def metin_uret(self, parcalar):
+        self.parcalar = parcalar
+        return self._yanit
 
 
 def test_verilen_metin_kullanilir_tekrar_cikarilmaz(monkeypatch):
@@ -20,13 +21,12 @@ def test_verilen_metin_kullanilir_tekrar_cikarilmaz(monkeypatch):
     monkeypatch.setattr(extraction, "pdf_text_ayikla",
                         lambda p: cagrilar.append(p) or "")
 
-    client = _fake_client(
+    istemci = SahteIstemci(
         '{"fatura_no": "GIB2024123456789", "fatura_tarihi": "2024-01-15", '
         '"vergiler_dahil_tutar": 100}')
 
     uzun_metin = "Fatura satir icerigi " * 20  # > 100 karakter → dijital
-    veri = extraction.pdf_den_veri_cek(
-        "ornek.pdf", client, queue.Queue(), metin=uzun_metin)
+    veri = extraction.pdf_den_veri_cek("ornek.pdf", istemci, metin=uzun_metin)
 
     assert veri["fatura_no"] == "GIB2024123456789"
     assert veri["_teknik_bilgi"] == "Dijital"
@@ -39,7 +39,7 @@ def test_metin_verilmezse_kendi_cikarir(monkeypatch):
     monkeypatch.setattr(extraction, "pdf_text_ayikla",
                         lambda p: cagrilar.append(p) or ("uzun metin " * 20))
 
-    client = _fake_client('{"fatura_no": "GIB2024123456789"}')
-    extraction.pdf_den_veri_cek("ornek.pdf", client, queue.Queue())
+    extraction.pdf_den_veri_cek(
+        "ornek.pdf", SahteIstemci('{"fatura_no": "GIB2024123456789"}'))
 
     assert cagrilar == ["ornek.pdf"]  # tam olarak bir kez

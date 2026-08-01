@@ -12,12 +12,10 @@ import queue
 import threading
 import time
 
-import google.genai as genai
-
+import gemini
 from extraction import (
     xml_den_veri_cek, pdf_den_veri_cek, pdf_text_ayikla,
-    TIMEOUT_SANIYE, MAX_WORKERS, veri_dogrula,
-    pdf_gecerli_mi,
+    MAX_WORKERS, veri_dogrula, pdf_gecerli_mi,
 )
 from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
                      ModelHatasi, ExcelHatasi)
@@ -27,22 +25,28 @@ from duzeltme import kural_uygula
 
 def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
            stop_event: threading.Event, retry_dosyalar: list | None = None,
-           zoom: float = 1.5, kurallar: dict | None = None):
-    """Fatura işleme döngüsü — ayrı thread'de çalışır."""
+           zoom: float = 1.5, kurallar: dict | None = None, istemci=None):
+    """Fatura işleme döngüsü — ayrı thread'de çalışır.
+
+    `istemci` verilmezse gerçek Gemini istemcisi kurulur; testler kendi
+    sahtelerini geçirerek tüm döngüyü ağa çıkmadan çalıştırır.
+    """
 
     def log(tag, mesaj):
         log_q.put((tag, mesaj))
 
     kurallar = kurallar or {}
 
-    try:
-        client = genai.Client(
-            api_key=api_key,
-            http_options={"timeout": TIMEOUT_SANIYE * 1000})
-    except Exception as e:
-        log("critical", f"Bağlantı kurulamadı: {e}")
-        log_q.put(("done", ([], 0, [])))
-        return
+    if istemci is None:
+        try:
+            istemci = gemini.olustur(
+                api_key,
+                bilgi=lambda mesaj: log_q.put(("info", mesaj)),
+                iptal=stop_event)
+        except Exception as e:
+            log("critical", f"Bağlantı kurulamadı: {e}")
+            log_q.put(("done", ([], 0, [])))
+            return
 
     CIKTI = os.path.join(klasor, cikti_adi)
 
@@ -181,8 +185,8 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             log_q.put(("isleniyor", f"{dosya_adi} ({tip_etiketi})"))
 
             try:
-                return ("ok", sureli(pdf_den_veri_cek(dosya, client, log_q,
-                                                      stop_event, zoom, metin=metin), t0))
+                return ("ok", sureli(pdf_den_veri_cek(dosya, istemci, zoom,
+                                                      metin=metin), t0))
             except APIKeyHatasi as e:
                 api_hata.set()
                 return ("critical", str(e))

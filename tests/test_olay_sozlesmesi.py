@@ -15,16 +15,15 @@ from api import Api
 
 
 def _worker_olaylari(tmp_path, monkeypatch):
-    import google.genai
     import worker as worker_modulu
 
-    monkeypatch.setattr(google.genai, "Client", lambda **k: object())
     kaynak = pathlib.Path("tests/fixtures/ornek_fatura.xml").read_text("utf-8")
     (tmp_path / "f0.xml").write_text(kaynak, "utf-8")
 
     log_q = queue.Queue()
+    # XML-only akış modele hiç gitmez; istemci yalnızca kurulmasın diye veriliyor.
     worker_modulu.worker("ANAHTAR", str(tmp_path), "cikti.xlsx",
-                         log_q, threading.Event())
+                         log_q, threading.Event(), istemci=object())
     olaylar = []
     while not log_q.empty():
         olaylar.append(log_q.get_nowait())

@@ -53,7 +53,7 @@ python -m pytest          # tüm testler
 python -m pytest tests/test_xml.py -q   # tek dosya
 python -m pytest -k fatura_no           # isim filtresiyle
 ```
-148 tests. Coverage focuses on the pure, UI‑free logic: `_duzelt_fatura_no`, `_json_ayikla`, `to_float`, `tarih_parse`, `veri_dogrula`, the Excel URL/round‑trip helpers, `xml_den_veri_cek` (via `tests/fixtures/ornek_fatura.xml`), the Excel "Kaynak" column, and an end‑to‑end `worker` smoke test (XML‑only, `google.genai.Client` patched). It also covers `Api` (only callable public attributes — see below), `pencere_boyutu`, `review_onayla` (`tests/test_review_onayla.py` — the only path that writes Excel), and the **Python↔JS event contract** (`tests/test_olay_sozlesmesi.py`). `Api(kok=<path>)` takes the config directory per instance, so tests never touch the real `.env` / `gecmis.json` / `duzeltmeler.json`. `pytest.ini` filters third‑party `DeprecationWarning`s so output stays clean.
+164 tests. Coverage focuses on the pure, UI‑free logic: `_duzelt_fatura_no`, `_json_ayikla`, `to_float`, `tarih_parse`, `veri_dogrula`, the Excel URL/round‑trip helpers, `xml_den_veri_cek` (via `tests/fixtures/ornek_fatura.xml`), the Excel "Kaynak" column, and end‑to‑end `worker` runs for **both** the XML and the PDF path — the PDF path became testable once the model call moved behind the `gemini` seam (`worker(..., istemci=<sahte>)`, no network, no `google.genai` patching). `tests/test_gemini.py` pins the resilience contract: backoff ladder, `retry in Ns` override, API‑key errors never retried (against Google's real error text), unknown errors re‑raised raw, cancellation mid‑sleep, and the RPM limiter. Time is injected (`uyu`/`saat`) — with the real clock the ladder alone would take 225 seconds. It also covers `Api` (only callable public attributes — see below), `pencere_boyutu`, `review_onayla` (`tests/test_review_onayla.py` — the only path that writes Excel), and the **Python↔JS event contract** (`tests/test_olay_sozlesmesi.py`). `Api(kok=<path>)` takes the config directory per instance, so tests never touch the real `.env` / `gecmis.json` / `duzeltmeler.json`. `pytest.ini` filters third‑party `DeprecationWarning`s so output stays clean.
 
 **Headless tests cannot catch UI‑layer bugs.** Three real defects during the pywebview migration were invisible to pytest: the startup hang (needed a real `Window` object), the dead‑UI race, and zoom looking broken (CSS shrank a correctly‑enlarged PNG). Always launch the app and have the user look. `py-spy dump --pid <pid>` is the tool for a frozen window. When testing code that does intra‑module imports, patch where the name is used (e.g. `worker.pdf_text_ayikla`), not where it is defined.
 
@@ -70,13 +70,19 @@ python -m pytest -k fatura_no           # isim filtresiyle
   - `style.css` – layout; `tema.css` – the six themes; `tema.js` – theme picker
 - **`worker.py`** – The background processing loop (`worker(...)`). UI‑independent pure logic: scans the folder, runs PDF tasks in a `ThreadPoolExecutor`, processes XML‑only files sequentially, and reports progress through the `log_q` queue and `stop_event`. Emits structured events: `("fatura", {...})` per extracted row (invoice no, company, amount, source, warnings, duration), `("atlandi", {...})`, `("isleniyor", ad)`. **Does not write Excel** — when finished it emits a `("review", payload)` event (payload keys: `mevcut, yeni, atlanmis, uyarilar, cikti, kesildi`) so the GUI can show the review window before saving. Testable without a UI.
 - **`review.py`** – Pure logic for the review/correction UI (no UI imports): `DUZENLENEBILIR_ALANLAR`, `satir_form_degerleri`, `form_satira_uygula` (converts form text back to typed values via `to_float`/`tarih_parse`, returns a copy), `nihai_satirlar` (final list = existing + non‑excluded new rows). Re‑validation reuses `veri_dogrula`.
-- **`extraction.py`** – Core data‑extraction logic. Contains:
-  - `pdf_den_veri_cek` – Hybrid extraction: uses the `metin` arg if the caller already extracted the digital text (avoids double work), otherwise calls `pdf_text_ayikla`. If the text is > 100 chars, sends the raw text to Gemini; otherwise falls back to JPEG images. Tags the result with `_teknik_bilgi` = `"Dijital"` or `"OCR"`.
+- **`gemini.py`** – **The only door to the AI model.** Callers know one method: `istemci.metin_uret(parcalar) -> str`. Behind it live the RPM limiter, the retry ladder, and error classification; `extraction` and `worker` never import `google.genai`. `parcalar` is a list of `str` (text) and `bytes` (JPEG); Gemini's `Part` type never crosses the seam.
+  - `ModelIstemcisi(client, *, bilgi, iptal, uyu, sinirlayici)` – `bilgi` is a plain callable (not a queue), so the module knows nothing about the UI event contract. `uyu`/`saat` are injected: testing the 15/30/45/60 s ladder with the real clock would take 225 seconds, i.e. it would never be tested.
+  - `Sinirlayici` – RPM limiter. Its state is **process‑lifetime, not run‑lifetime** (`_VARSAYILAN_SINIRLAYICI`): the quota belongs to the API key, so stopping and restarting must not reset the counter or the second run instantly hits 429.
+  - `olustur(api_key, *, bilgi, iptal)` – builds the real `genai.Client` and hides it behind the seam.
+  - All model‑call constants live here: `GEMMA_MODEL`, `MAX_DENEME`, `TIMEOUT_SANIYE`, `RPM_LIMIT`, `THINKING_BUDGET`, `TEKRAR_HATALARI`, `API_KEY_HATALARI`.
+- **`hatalar.py`** – The exception taxonomy. Separate because the module that *raises* and the module that *catches* are usually different (`excel_utils` raises `ExcelHatasi`, `worker`/`api` catch it); without it, catchers import the raiser purely for an exception class.
+- **`extraction.py`** – Core data‑extraction logic. Knows how to build a request and type the answer, **not** how to talk to a model. Contains:
+  - `pdf_den_veri_cek(dosya, istemci, zoom, metin)` – Hybrid extraction: uses the `metin` arg if the caller already extracted the digital text (avoids double work), otherwise calls `pdf_text_ayikla`. If the text is > 100 chars, sends the raw text; otherwise falls back to JPEG images. Tags the result with `_teknik_bilgi` = `"Dijital"` or `"OCR"`.
   - `pdf_text_ayikla` – Extracts the embedded digital text layer from a PDF (empty string if none).
   - `_json_ayikla` – Robustly extracts a JSON object from the model reply, tolerating ``` fences and surrounding prose; raises `ModelHatasi` if no JSON object is found.
   - `xml_den_veri_cek` – Parses UBL XML invoices directly.
   - `veri_dogrula` – Validates extracted fields and returns **`[(alan, mesaj), ...]`** — the field name lets the review screen show each warning under the input it belongs to. A test enforces that every field name exists in `DUZENLENEBILIR_ALANLAR`, otherwise a warning would silently have nowhere to render. Includes an amount-consistency check: the implied VAT rate derived from `kdv_haric_tutar` and `vergiler_dahil_tutar` must match a known Turkish VAT rate (`KDV_ORANLARI = (0, 1, 8, 10, 18, 20)`, ±0.5 tolerance).
-  - Rate limiter (`_rpm_bekle`) – Ensures ≤ 14 requests per minute (Gemini free‑tier limit).
+  - Rate limiting, retries and error classification are **not** here — they live behind `gemini.ModelIstemcisi`.
   - PDF image rendering with configurable zoom (1.0×–3.0×).
 - **`ozet.py`** – Pure summary computation (`ozet_hesapla`): general, monthly, and per-company breakdowns with per-currency totals. No UI or openpyxl dependency — only plain Python and the extracted row data.
 - **`duzeltme.py`** – Öğrenen düzeltme kuralları (saf mantık, arayüz/Excel'siz). VKN bazlı firma-sabit alan kuralları (`OGRENILEN_ALANLAR = ["sirket_adi", "vergi_dairesi"]`) için `kurallari_oku`/`kurallari_yaz`/`kural_uygula`/`kural_ekle`. Kurallar `duzeltmeler.json`'da tutulur (frozen modda AppData). `para_birimi` bilinçli olarak kapsam dışı (faturaya özel). Worker, çıkarılan her satıra `kural_uygula`'yı `veri_dogrula`'dan önce uygular; review ekranında "hatırla" kutusu satırları işaretler, `api.review_onayla` kaydeder.
@@ -121,11 +127,11 @@ the preview shows invoice B's document, and the user approves against the wrong 
 rebuild the form with `innerHTML` on edit: it eats characters typed after Tab and drops focus.
 `rvUyariGoster` updates warnings in place.
 
-### Constants & Settings (extraction.py)
+### Constants & Settings (gemini.py)
 - `GEMMA_MODEL = "gemma-4-31b-it"` — **2026‑08‑01'de doğrulandı:** `client.models.list()` çıktısında var (`models/gemma-4-31b-it`) ve gerçek bir üretim çağrısı yanıt döndürüyor. Gemma modelleri JSON‑mode/`response_schema` desteklemediği için JSON güvenilirliği `_json_ayikla`'nın dayanıklı ayrıştırmasına dayanır.
 - `MAX_DENEME = 5` – Retry attempts for transient API errors.
 - `TIMEOUT_SANIYE = 180` – Request timeout.
-- `MAX_WORKERS = 5` – Parallel PDF processing threads.
+- `MAX_WORKERS = 5` – Parallel PDF processing threads (this one lives in `extraction.py` — it is a worker concern, not a model concern).
 - `RPM_LIMIT = 14` – Requests per minute (safe margin under the 15‑RPM free limit).
 - `THINKING_BUDGET = -1` – Default Gemini thinking budget (unlimited).
 
@@ -190,7 +196,7 @@ in light ones.
 
 ## Error Handling
 
-### Custom Exceptions (extraction.py)
+### Custom Exceptions (hatalar.py)
 - `APIKeyHatasi` – Invalid/missing API key; stops the entire job.
 - `InternetHatasi` – Connection/rate‑limit issues; skips the current file.
 - `PDFHatasi` / `XMLHatasi` – Corrupted or unreadable file; skips the file.
@@ -198,7 +204,7 @@ in light ones.
 - `ExcelHatasi` – Permission error when saving Excel; warns but continues.
 
 ### Retry Logic
-- Network/timeout/429/503 errors trigger a retry with exponential backoff (up to `MAX_DENEME` attempts).
+- Network/timeout/429/503 errors trigger a retry with backoff (15/30/45/60/75 s, up to `MAX_DENEME` attempts) **inside `gemini.ModelIstemcisi`**; callers see either a result or a classified exception. If the reply carries its own `retry in Ns`, that wins over the ladder.
 - API‑key errors are not retried; the UI opens the API‑key modal.
 
 ## Git & Commit Conventions

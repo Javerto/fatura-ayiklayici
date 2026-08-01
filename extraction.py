@@ -2,44 +2,17 @@
 PDF ve XML faturalardan veri çıkarma modülü.
 """
 
-import google.genai as genai
-from google.genai import types
 import fitz
 import xml.etree.ElementTree as ET
-import json, os, re, time, pathlib, queue, threading
+import json, os, re, pathlib
 from datetime import datetime as _dt
-from collections import deque
 
-from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
-                     ModelHatasi)
+from hatalar import PDFHatasi, XMLHatasi, ModelHatasi
 
 # ─── AYARLAR ─────────────────────────────────────────────────────────────────
-GEMMA_MODEL      = "gemma-4-31b-it"
-MAX_DENEME       = 5
-TIMEOUT_SANIYE   = 180
-THINKING_BUDGET  = -1
-MAX_WORKERS      = 5    # paralel thread sayısı
-RPM_LIMIT        = 14   # dakikada max istek (limitin biraz altında güvenli taraf)
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ─── RATE LIMITER ─────────────────────────────────────────────────────────────
-_rpm_lock      = threading.Lock()
-_istek_zamanlari: deque = deque()   # son 60 saniyedeki istek zamanları
-
-def _rpm_bekle():
-    """Dakikada RPM_LIMIT isteği aşmamak için gerekirse bekler."""
-    while True:
-        with _rpm_lock:
-            simdi = time.monotonic()
-            # 60 saniyeden eski kayıtları temizle
-            while _istek_zamanlari and simdi - _istek_zamanlari[0] >= 60:
-                _istek_zamanlari.popleft()
-            if len(_istek_zamanlari) < RPM_LIMIT:
-                _istek_zamanlari.append(simdi)
-                return
-            # En eski isteğin 60 saniyesi dolana kadar beklenecek süre
-            bekle = 60 - (simdi - _istek_zamanlari[0]) + 0.1
-        time.sleep(bekle)
+MAX_WORKERS = 5    # paralel thread sayısı
+# Model çağrısına ait ayarlar (model adı, deneme sayısı, RPM, timeout)
+# gemini.py'de: bu modül artık modelle nasıl konuşulduğunu bilmiyor.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -380,87 +353,29 @@ def pdf_text_ayikla(dosya_yolu: str) -> str:
         return ""
 
 
-def pdf_den_veri_cek(dosya_yolu: str, client, log_q: queue.Queue,
-                     stop_event: threading.Event | None = None,
-                     zoom: float = 1.5, metin: str | None = None) -> dict:
+def pdf_den_veri_cek(dosya_yolu: str, istemci, zoom: float = 1.5,
+                     metin: str | None = None) -> dict:
     """
     Hibrid yöntem: Önce dijital metni çekmeyi dener, bulamazsa görsele başvurur.
 
     `metin` dışarıdan verilirse (çağıran zaten çıkarmışsa) tekrar çıkarılmaz.
+    `istemci` modelle konuşmanın tek kapısı (bkz. gemini.ModelIstemcisi);
+    hız sınırı, yeniden deneme ve hata sınıflandırma onun ardında kalır.
     """
     # 1. Metin verilmediyse çıkar (verildiyse çift çıkarmayı önle)
     if metin is None:
         metin = pdf_text_ayikla(dosya_yolu)
 
-    parts = [PROMPT_SABLON]
-    is_digital = False
-    
-    if len(metin) > 100:  # Anlamlı bir metin varsa dijital kabul et
-        is_digital = True
-        parts.append(f"\n\nFatura Metni İçeriği:\n{metin}")
+    parcalar = [PROMPT_SABLON]
+    is_digital = len(metin) > 100   # Anlamlı bir metin varsa dijital kabul et
+
+    if is_digital:
+        parcalar.append(f"\n\nFatura Metni İçeriği:\n{metin}")
     else:
         # 2. Metin yoksa veya çok azsa görsele başvur (Fallback)
-        images = pdf_to_images(dosya_yolu, zoom)
-        for img_bytes in images:
-            parts.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+        parcalar.extend(pdf_to_images(dosya_yolu, zoom))
 
-    think_cfg = None
-    if THINKING_BUDGET == 0:
-        think_cfg = types.ThinkingConfig(thinking_budget=0)
-    elif THINKING_BUDGET > 0:
-        think_cfg = types.ThinkingConfig(thinking_budget=THINKING_BUDGET)
-    gen_config = types.GenerateContentConfig(thinking_config=think_cfg) if think_cfg else None
-
-    TEKRAR_HATALARI  = ("429", "resource_exhausted", "503", "504", "unavailable",
-                        "deadline_exceeded", "ssl", "timeout", "readtimeout",
-                        "connecttimeout", "connectionerror", "remoteprotocolerror", "recv")
-    API_KEY_HATALARI = ("api_key_invalid", "api key", "invalid_api_key",
-                        "permission_denied", "unauthenticated")
-
-    son_hata = None
-    for deneme in range(MAX_DENEME):
-        _rpm_bekle()
-        if stop_event and stop_event.is_set():
-            raise InternetHatasi("İşlem durduruldu.")
-        try:
-            response = client.models.generate_content(
-                model=GEMMA_MODEL, contents=parts, config=gen_config)
-            son_hata = None
-            break
-        except Exception as e:
-            hata_str = str(e).lower()
-            if any(k in hata_str for k in API_KEY_HATALARI):
-                raise APIKeyHatasi(
-                    "API key geçersiz veya süresi dolmuş.\n"
-                    "Lütfen geçerli bir key girin (aistudio.google.com).")
-            if any(k in hata_str for k in TEKRAR_HATALARI):
-                son_hata = e
-                bekle = 15 * (deneme + 1)
-                m = re.search(r"retry[^0-9]*([0-9]+)s", str(e), re.IGNORECASE)
-                if m:
-                    bekle = int(m.group(1)) + 2
-                log_q.put(("info", f"   ↻ Bağlantı hatası, {bekle}s bekleniyor "
-                                   f"(deneme {deneme + 1}/{MAX_DENEME})..."))
-                for _ in range(bekle):
-                    if stop_event and stop_event.is_set():
-                        raise InternetHatasi("İşlem durduruldu.")
-                    time.sleep(1)
-            else:
-                son_hata = e
-                break
-
-    if son_hata:
-        hata_str = (str(son_hata) + " " + type(son_hata).__name__).lower()
-        if any(k in hata_str for k in ("timeout", "connection", "network", "ssl", "recv")):
-            raise InternetHatasi(
-                "İnternet bağlantısı kurulamadı veya istek zaman aşımına uğradı. "
-                "Bağlantınızı kontrol edip tekrar deneyin.")
-        if "429" in hata_str or "rate" in hata_str or "quota" in hata_str:
-            raise InternetHatasi(
-                "API istek limiti aşıldı. Birkaç dakika bekleyip tekrar başlatın.")
-        raise son_hata
-
-    veri = _json_ayikla(response.text)
+    veri = _json_ayikla(istemci.metin_uret(parcalar))
 
     raw_fn = str(veri.get("fatura_no") or "").strip()
     if raw_fn:
