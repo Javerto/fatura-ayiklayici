@@ -44,6 +44,18 @@ def test_worker_olay_tipleri(tmp_path, monkeypatch):
     assert {"progress", "isleniyor", "fatura", "review"} <= tipler
 
 
+def test_isleniyor_olayinin_anahtarlari(tmp_path, monkeypatch):
+    """web/app.js uçan dosyaları `dosya` alanıyla "fatura"/"atlandi" olaylarına
+    eşleştiriyor; ad ve tip tek metinde birleştirilirse eşleşme kopar ve dosya
+    durum kartında sonsuza dek "işleniyor" görünür."""
+    olaylar = _worker_olaylari(tmp_path, monkeypatch)
+    isleniyor = next(d for t, d in olaylar if t == "isleniyor")
+    assert set(isleniyor) == {"dosya", "tip"}
+
+    fatura = next(d for t, d in olaylar if t == "fatura")
+    assert isleniyor["dosya"] == fatura["dosya"]     # eşleşme anahtarı aynı
+
+
 def test_review_olayinin_anahtarlari(tmp_path):
     """web/review.js `reviewAc(o)` bu alanları okuyor."""
     api = Api(kok=tmp_path)

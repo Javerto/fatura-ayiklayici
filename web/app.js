@@ -6,6 +6,8 @@ const D = {                 // ekranın tüm durumu
   toplam: 0, siradaki: 0, ok: 0, uyarili: 0, atlanan: 0,
   paralar: {},              // {TRY: 48320, USD: 120}
   uyarilar: [],             // [{dosya, liste:[...]}]
+  ucan: new Map(),          // o an işlenen dosyalar: dosya → tip
+  durduruluyor: false,      // durdurma mesajı uçan-liste tarafından ezilmesin
   baslangic: 0,
 };
 
@@ -35,6 +37,24 @@ function bilgiSatiri(mesaj, tip = "info") {
 }
 
 // ═══ DURUM KARTI ═══
+/* MAX_WORKERS=5 olduğu için aynı anda birden fazla dosya uçuyor; tek satır
+   göstermek hangisinin görüneceğini rastgeleye bırakıyordu. */
+function ucanTazele() {
+  if (D.durduruluyor || !D.calisiyor) return;   // "Durduruluyor…"/"Tamamlandı" korunsun
+  const kutu = $("stUcan");
+  if (!D.ucan.size) {
+    // Son dosya bitti, yenisi henüz başlamadı: eski listeyi asılı bırakma.
+    $("stNe").textContent = "Sıradaki Fatura Hazırlanıyor…";
+    kutu.hidden = true;
+    return;
+  }
+  $("stNe").textContent = `${D.ucan.size} Dosya İşleniyor`;
+  kutu.innerHTML = [...D.ucan].map(([dosya, tip]) =>
+    `<div class="sat"><span class="nokta"></span><span class="ad">${kacar(dosya)}</span>${
+      tip ? `<span class="tip">${kacar(tip)}</span>` : ""}</div>`).join("");
+  kutu.hidden = false;
+}
+
 function durumTazele() {
   $("stSayi").innerHTML = `${D.siradaki} <span class="of">/ ${D.toplam}</span>`;
   $("stOk").textContent = D.ok;
@@ -68,10 +88,11 @@ window.olaylar = function (liste) {
         break;
       }
       case "isleniyor":
-        $("stNe").textContent = o.d + " işleniyor…";
+        D.ucan.set(o.d.dosya, o.d.tip);
         break;
       case "fatura": {
         const f = o.d, uy = f.uyarilar || [];
+        D.ucan.delete(f.dosya);
         if (uy.length) { D.uyarili++; D.uyarilar.push({ dosya: f.dosya, liste: uy }); }
         else D.ok++;
         if (typeof f.tutar === "number") {
@@ -92,6 +113,7 @@ window.olaylar = function (liste) {
         break;
       }
       case "atlandi":
+        D.ucan.delete(o.d.dosya);
         D.atlanan++;
         satirEkle(`<div class="item err"><div class="dot">✕</div>
           <div class="grow"><div class="nm">${kacar(o.d.dosya)}</div>
@@ -115,12 +137,16 @@ window.olaylar = function (liste) {
         break;
     }
   }
+  ucanTazele();
   durumTazele();
 };
 
 function bitti(o) {
   D.calisiyor = false;
-  $("stNe").textContent = o.hata ? "Excel kaydedilemedi" : "tamamlandı";
+  D.ucan.clear();
+  D.durduruluyor = false;
+  $("stUcan").hidden = true;
+  $("stNe").textContent = o.hata ? "Excel Kaydedilemedi" : "Tamamlandı";
   $("stEta").textContent = "—";
   $("btnBasla").disabled = false;
   $("btnDurdur").disabled = true;
@@ -281,9 +307,12 @@ async function basla(retry) {
   }
 
   Object.assign(D, { calisiyor: true, siradaki: 0, toplam: 0, ok: 0, uyarili: 0,
-                     atlanan: 0, paralar: {}, uyarilar: [], baslangic: Date.now() });
+                     atlanan: 0, paralar: {}, uyarilar: [], durduruluyor: false,
+                     baslangic: Date.now() });
+  D.ucan.clear();
   feedTemizle();
-  $("stNe").textContent = "hazırlanıyor…";
+  $("stUcan").hidden = true;
+  $("stNe").textContent = "Hazırlanıyor…";
   $("stEta").textContent = "—";
   $("btnDurdur").disabled = false;
   $("btnUyari").disabled = true;
@@ -309,7 +338,8 @@ async function acilis() {
   $("btnDurdur").onclick = () => {
     pywebview.api.durdur();
     $("btnDurdur").disabled = true;
-    $("stNe").textContent = "durduruluyor — işlenen fatura tamamlanıyor…";
+    D.durduruluyor = true;      // uçan liste bu mesajın üstüne yazmasın
+    $("stNe").textContent = "Durduruluyor — İşlenen Fatura Tamamlanıyor…";
   };
   $("btnExcel").onclick = () => pywebview.api.excel_ac();
   $("btnKey").onclick = apiKeyModal;

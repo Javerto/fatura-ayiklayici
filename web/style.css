@@ -110,8 +110,24 @@ button{font-family:inherit}
 .st-count{font-size:30px;font-weight:660;letter-spacing:-.025em;line-height:1;
           font-variant-numeric:tabular-nums}
 .st-count .of{font-size:17px;font-weight:500;color:var(--dim)}
-.st-what{font-size:12.5px;color:var(--sub);padding-bottom:2px;min-width:0;
+/* 15,5px: sol üstteki sayaç (30px) ile sağ üstteki ETA (16px) arasına oturur.
+   Başlıklar kaynakta Büyük Harfle yazılı — CSS `text-transform:capitalize`
+   Türkçe'de "işleniyor"u "Işleniyor" yapabiliyor (noktasız I). */
+.st-what{font-size:15.5px;font-weight:650;color:var(--tx);padding-bottom:2px;
+         min-width:0;max-width:46ch;
          overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Aynı anda MAX_WORKERS kadar dosya uçabilir. İki sütun: hepsi görünür ama
+   kart 5 satır yerine 3 satır büyür. Dar pencerede tek sütuna düşer. */
+.st-ucan{display:grid;grid-template-columns:1fr 1fr;gap:3px 22px;margin:12px 0}
+.st-ucan[hidden]{display:none}      /* display:grid, [hidden]'ı ezer */
+.st-ucan .sat{display:flex;align-items:center;gap:8px;font-size:12px;min-width:0}
+.st-ucan .nokta{width:5px;height:5px;border-radius:99px;background:var(--accent);
+  flex-shrink:0;animation:nabiz 1.4s ease-in-out infinite}
+@keyframes nabiz{0%,100%{opacity:.35}50%{opacity:1}}
+.st-ucan .ad{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx);
+  font-weight:400}
+.st-ucan .tip{margin-left:auto;font-size:10.5px;color:var(--dim);flex-shrink:0}
+@media (max-width:640px){.st-ucan{grid-template-columns:1fr}}
 .st-top .sp{flex:1}
 .st-eta{text-align:right;padding-bottom:1px}
 .st-eta .v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;
@@ -127,14 +143,18 @@ button{font-family:inherit}
   animation:shine 1.6s infinite}
 @keyframes shine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
 
-.st-break{display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:13px;
+.st-break{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:13px;
           padding-top:13px;border-top:1px solid var(--line-soft)}
-.st-b{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--sub)}
-.st-b b{font-weight:650;font-variant-numeric:tabular-nums;font-size:13.5px}
-.st-b .d{width:7px;height:7px;border-radius:99px;flex-shrink:0}
-.st-b.ok .d{background:var(--ok)} .st-b.ok b{color:var(--ok)}
-.st-b.warn .d{background:var(--warn)} .st-b.warn b{color:var(--warn)}
-.st-b.err .d{background:var(--err)} .st-b.err b{color:var(--err)}
+/* Her sayaç kendi renginde bir rozet. Renkler yalnızca değişkenlerden gelir,
+   bu yüzden altı temada da kendiliğinden doğru kontrastı alır. */
+.st-b{display:inline-flex;align-items:center;gap:8px;border-radius:99px;
+      padding:5px 13px 5px 11px;border:1px solid transparent}
+.st-b b{font-weight:700;font-variant-numeric:tabular-nums;font-size:14px}
+.st-b .k{font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+         font-weight:650;opacity:.85}
+.st-b.ok{background:var(--ok-bg);border-color:var(--ok);color:var(--ok)}
+.st-b.warn{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.st-b.err{background:var(--err-bg);border-color:var(--err);color:var(--err)}
 .st-break .sp{flex:1}
 .st-sum{font-size:12.5px;color:var(--sub)}
 .st-sum b{font-size:14px;font-weight:650;color:var(--tx);

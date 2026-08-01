@@ -68,7 +68,7 @@ python -m pytest -k fatura_no           # isim filtresiyle
   - `app.js` – main screen, event handling, modals (`onayModal`/`bilgiModal` — never the browser's `confirm`/`alert`, which render as “127.0.0.1:… diyor ki” in WebView2)
   - `review.js` – review screen; row text lives here, typed values stay in Python
   - `style.css` – layout; `tema.css` – the six themes; `tema.js` – theme picker
-- **`worker.py`** – The background processing loop (`worker(...)`). UI‑independent pure logic: scans the folder, runs PDF tasks in a `ThreadPoolExecutor`, processes XML‑only files sequentially, and reports progress through the `log_q` queue and `stop_event`. Emits structured events: `("fatura", {...})` per extracted row (invoice no, company, amount, source, warnings, duration), `("atlandi", {...})`, `("isleniyor", ad)`. **Does not write Excel** — when finished it emits a `("review", payload)` event (payload keys: `mevcut, yeni, atlanmis, uyarilar, cikti, kesildi`) so the GUI can show the review window before saving. Testable without a UI.
+- **`worker.py`** – The background processing loop (`worker(...)`). UI‑independent pure logic: scans the folder, runs PDF tasks in a `ThreadPoolExecutor`, processes XML‑only files sequentially, and reports progress through the `log_q` queue and `stop_event`. Emits structured events: `("fatura", {...})` per extracted row (invoice no, company, amount, source, warnings, duration), `("atlandi", {...})`, `("isleniyor", {dosya, tip})` — the name and the type (`Dijital`/`OCR`/`XML`) travel in separate keys so the UI can match an in‑flight file against the `dosya` key of the later `fatura`/`atlandi` event; merged into one string the match breaks and the file stays "processing" forever (`tests/test_olay_sozlesmesi.py` guards this). **Does not write Excel** — when finished it emits a `("review", payload)` event (payload keys: `mevcut, yeni, atlanmis, uyarilar, cikti, kesildi`) so the GUI can show the review window before saving. Testable without a UI.
 - **`review.py`** – Pure logic for the review/correction UI (no UI imports): `DUZENLENEBILIR_ALANLAR`, `satir_form_degerleri`, `form_satira_uygula` (converts form text back to typed values via `to_float`/`tarih_parse`, returns a copy), `nihai_satirlar` (final list = existing + non‑excluded new rows). Re‑validation reuses `veri_dogrula`.
 - **`gemini.py`** – **The only door to the AI model.** Callers know one method: `istemci.metin_uret(parcalar) -> str`. Behind it live the RPM limiter, the retry ladder, and error classification; `extraction` and `worker` never import `google.genai`. `parcalar` is a list of `str` (text) and `bytes` (JPEG); Gemini's `Part` type never crosses the seam.
   - `ModelIstemcisi(client, *, bilgi, iptal, uyu, sinirlayici)` – `bilgi` is a plain callable (not a queue), so the module knows nothing about the UI event contract. `uyu`/`saat` are injected: testing the 15/30/45/60 s ladder with the real clock would take 225 seconds, i.e. it would never be tested.
@@ -187,7 +187,13 @@ in light ones.
 ### Behaviour notes
 - The status card merges progress and totals into one block; during a run it shows
   `işlenen / toplam`, ETA, and the success/warning/skip breakdown with per‑currency totals.
-- The log feed shows **newest first**; “işleniyor” is not a feed row, it updates the status card.
+- The log feed shows **newest first**; “işleniyor” is not a feed row, it updates the status
+  card. With `MAX_WORKERS = 5` several files are in flight at once, so the card lists **all**
+  of them (`#stUcan`, two columns) — a single line silently showed whichever started last.
+  The pre‑pywebview tkinter UI logged each start as a feed row; that was dropped deliberately.
+- Status‑card headlines are written **Title Case in the source**, not via CSS
+  `text-transform:capitalize` — that rule is locale‑naive and turns “işleniyor” into
+  “Işleniyor” (dotless I) depending on the engine.
 - The review form has **no “Apply” button** — leaving a field applies and re‑validates it. The old
   tkinter screen required Apply and silently discarded edits when users forgot.
 - PDF preview: `api.onizleme` renders with `fitz` at the requested zoom and returns base64 PNG.

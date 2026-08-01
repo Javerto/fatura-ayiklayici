@@ -163,7 +163,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         xml_yolu  = os.path.splitext(dosya)[0] + ".xml"
         t0 = time.time()
         if os.path.exists(xml_yolu):
-            log_q.put(("isleniyor", dosya_adi))
+            log_q.put(("isleniyor", {"dosya": dosya_adi, "tip": "XML"}))
             try:
                 veri = xml_den_veri_cek(xml_yolu, dosya)
                 # dosya_yolu PDF'i gösterdiği için excel_utils'in .xml
@@ -182,7 +182,9 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             # Metni bir kez çıkar; hem log etiketi hem de işleme için kullan
             metin = pdf_text_ayikla(dosya)
             tip_etiketi = "Dijital" if len(metin) > 100 else "OCR"
-            log_q.put(("isleniyor", f"{dosya_adi} ({tip_etiketi})"))
+            # Dosya adı ve tip ayrı gider: arayüz uçan işleri biten faturayla
+            # ("fatura"/"atlandi" olaylarının `dosya` alanı) eşleştiriyor.
+            log_q.put(("isleniyor", {"dosya": dosya_adi, "tip": tip_etiketi}))
 
             try:
                 return ("ok", sureli(pdf_den_veri_cek(dosya, istemci, zoom,
@@ -256,7 +258,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             break
 
         dosya_adi = os.path.basename(xml_dosya)
-        log_q.put(("isleniyor", dosya_adi))
+        log_q.put(("isleniyor", {"dosya": dosya_adi, "tip": "XML"}))
         t0 = time.time()
         try:
             islendi(sureli(xml_den_veri_cek(xml_dosya, None), t0))
