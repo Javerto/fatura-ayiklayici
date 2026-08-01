@@ -5,7 +5,8 @@ import os
 import pytest
 from openpyxl import load_workbook
 
-from excel_utils import ExcelHatasi, excel_olustur, mevcut_verileri_oku
+from excel_utils import excel_olustur, mevcut_verileri_oku
+from hatalar import ExcelHatasi
 
 
 def _satir(no="GIB2024000000101"):

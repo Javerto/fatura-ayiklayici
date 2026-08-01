@@ -8,7 +8,8 @@ import json
 import pytest
 
 from api import Api
-from excel_utils import ExcelHatasi, mevcut_verileri_oku
+from excel_utils import mevcut_verileri_oku
+from hatalar import ExcelHatasi
 
 
 def _satir(no, sirket="ACME A.Ş.", vkn="1234567890"):

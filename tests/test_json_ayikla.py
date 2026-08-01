@@ -2,7 +2,8 @@
 
 import pytest
 
-from extraction import _json_ayikla, ModelHatasi
+from extraction import _json_ayikla
+from hatalar import ModelHatasi
 
 
 def test_duz_json():

@@ -8,7 +8,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
-from extraction import ExcelHatasi
+from hatalar import ExcelHatasi
 from ozet import ozet_hesapla
 
 SUTUN = {

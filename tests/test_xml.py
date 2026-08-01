@@ -5,7 +5,8 @@ from datetime import datetime
 
 import pytest
 
-from extraction import xml_den_veri_cek, XMLHatasi
+from extraction import xml_den_veri_cek
+from hatalar import XMLHatasi
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "ornek_fatura.xml"
 

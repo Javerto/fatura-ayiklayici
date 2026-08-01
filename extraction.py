@@ -10,6 +10,9 @@ import json, os, re, time, pathlib, queue, threading
 from datetime import datetime as _dt
 from collections import deque
 
+from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
+                     ModelHatasi)
+
 # ─── AYARLAR ─────────────────────────────────────────────────────────────────
 GEMMA_MODEL      = "gemma-4-31b-it"
 MAX_DENEME       = 5
@@ -39,24 +42,6 @@ def _rpm_bekle():
         time.sleep(bekle)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ─── ÖZEL HATALAR ─────────────────────────────────────────────────────────────
-class APIKeyHatasi(Exception):
-    """API key geçersiz veya süresi dolmuş — tüm işlem durur."""
-
-class InternetHatasi(Exception):
-    """Bağlantı veya limit hatası — bu fatura atlanır."""
-
-class PDFHatasi(Exception):
-    """PDF açılamadı — bu fatura atlanır."""
-
-class XMLHatasi(Exception):
-    """XML formatı geçersiz — bu fatura atlanır."""
-
-class ModelHatasi(Exception):
-    """AI modelinden geçersiz veya ayrıştırılamayan yanıt — bu fatura atlanır."""
-
-class ExcelHatasi(Exception):
-    """Excel kaydedilemedi."""
 # ─────────────────────────────────────────────────────────────────────────────
 
 PROMPT_SABLON = """Fatura verilerini (görsel veya metin) dikkatlice incele. Aşağıdaki alanları çıkar.

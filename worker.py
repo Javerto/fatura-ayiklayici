@@ -16,11 +16,11 @@ import google.genai as genai
 
 from extraction import (
     xml_den_veri_cek, pdf_den_veri_cek, pdf_text_ayikla,
-    APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
-    ModelHatasi, ExcelHatasi,
     TIMEOUT_SANIYE, MAX_WORKERS, veri_dogrula,
     pdf_gecerli_mi,
 )
+from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
+                     ModelHatasi, ExcelHatasi)
 from excel_utils import mevcut_verileri_oku
 from duzeltme import kural_uygula
 

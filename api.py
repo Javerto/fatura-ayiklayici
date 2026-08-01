@@ -22,8 +22,9 @@ import webview
 from dotenv import load_dotenv, set_key
 
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
-from excel_utils import ExcelHatasi, excel_olustur
+from excel_utils import excel_olustur
 from extraction import veri_dogrula
+from hatalar import ExcelHatasi
 from review import (DUZENLENEBILIR_ALANLAR, form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
 from worker import worker

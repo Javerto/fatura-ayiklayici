@@ -16,7 +16,7 @@ import threading
 import pytest
 
 import extraction
-from extraction import APIKeyHatasi, InternetHatasi
+from hatalar import APIKeyHatasi, InternetHatasi
 
 # 100 karakterden uzun: dijital metin dalı seçilsin, fitz'e hiç dokunulmasın.
 UZUN_METIN = "Fatura metni. " * 20
