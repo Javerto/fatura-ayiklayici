@@ -6,7 +6,6 @@ UI'dan bağımsızdır; dış dünyayla yalnızca `log_q` kuyruğu ve `stop_even
 """
 
 import concurrent.futures
-import glob
 import os
 import queue
 import threading
@@ -22,6 +21,26 @@ from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
                      ModelHatasi, ExcelHatasi)
 from excel_utils import mevcut_verileri_oku
 from duzeltme import kural_uygula
+
+
+def is_listesi(klasor: str) -> tuple[list[str], list[str]]:
+    """Klasördeki işlenecek dosyalar: (pdf_yollari, esi_olmayan_xml_yollari).
+
+    Eşi PDF olan XML ayrı fatura sayılmaz — o PDF'in verisi zaten XML'den
+    okunur. Eşleştirme dosya sistemine değil listeye sorulur: `os.path.exists`
+    Windows'ta harf duyarsız, testte (Linux) duyarlıydı; arayüzdeki sayaç ise
+    yalnızca `.pdf`/`.PDF` varyantlarını elle deniyor, `.Pdf`'i kaçırıyordu.
+    """
+    try:
+        adlar = sorted(os.listdir(klasor))
+    except OSError:
+        return [], []
+    pdf = [a for a in adlar if a.lower().endswith(".pdf")]
+    pdf_kokleri = {a[:-4].lower() for a in pdf}
+    xml = [a for a in adlar if a.lower().endswith(".xml")
+           and a[:-4].lower() not in pdf_kokleri]
+    return ([os.path.join(klasor, a) for a in pdf],
+            [os.path.join(klasor, a) for a in xml])
 
 
 def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
@@ -67,9 +86,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             return
         log("info", f"{toplam} fatura yeniden denenecek.")
     else:
-        pdf_dosyalar = sorted(glob.glob(os.path.join(klasor, "*.pdf")))
-        xml_only = [x for x in sorted(glob.glob(os.path.join(klasor, "*.xml")))
-                    if not os.path.exists(os.path.splitext(x)[0] + ".pdf")]
+        pdf_dosyalar, xml_only = is_listesi(klasor)
 
         if not pdf_dosyalar and not xml_only:
             log("critical", "Klasörde işlenecek PDF veya XML dosyası bulunamadı.")

@@ -28,7 +28,7 @@ from extraction import veri_dogrula
 from hatalar import ExcelHatasi
 from review import (DUZENLENEBILIR_ALANLAR, form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
-from worker import worker
+from worker import is_listesi, worker
 
 # EXE modunda ayarlar AppData'ya yazılır (kullanıcı görmez/silemez).
 if getattr(sys, "frozen", False):
@@ -131,14 +131,10 @@ class Api:
 
     def klasor_ozeti(self, klasor: str) -> dict:
         """Klasördeki PDF/XML sayısı — seçimden hemen sonra gösterilir."""
-        try:
-            adlar = os.listdir(klasor)
-        except OSError:
-            return {"pdf": 0, "xml": 0}
-        pdf = [a for a in adlar if a.lower().endswith(".pdf")]
-        # Eşi PDF olan XML'ler ayrı sayılmaz; worker da onları tek fatura sayar.
-        xml = [a for a in adlar if a.lower().endswith(".xml")
-               and a[:-4] + ".pdf" not in adlar and a[:-4] + ".PDF" not in adlar]
+        # Kural worker ile ortak: eşi PDF olan XML ayrı fatura sayılmaz.
+        # (Mevcut Excel'de işlenmiş olanlar burada düşülmez — bu sayı klasörün
+        # içeriğidir, işlenecek fatura sayısı değil.)
+        pdf, xml = is_listesi(klasor)
         return {"pdf": len(pdf), "xml": len(xml)}
 
     def basla(self, ayarlar: dict) -> dict:
