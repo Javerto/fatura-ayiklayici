@@ -7,9 +7,9 @@ Saf mantık (tkinter/Excel'siz, test edilebilir). Kurallar JSON'da tutulur:
 import json
 import os
 
-# Firma kimliğine ait, faturadan faturaya değişmeyen alanlar.
-# para_birimi bilinçli olarak dışarıda: aynı firma TL/EUR kesebilir.
-OGRENILEN_ALANLAR = ["sirket_adi", "vergi_dairesi"]
+# Firma kimliğine ait, faturadan faturaya değişmeyen alanlar (fatura.ALANLAR'da
+# ogrenilir=True). para_birimi bilinçli olarak dışarıda: aynı firma TL/EUR kesebilir.
+from fatura import OGRENILEN_ALANLAR
 
 
 def kurallari_oku(yol) -> dict:

@@ -2,22 +2,7 @@
 from datetime import datetime
 
 from extraction import to_float, tarih_parse
-from duzeltme import OGRENILEN_ALANLAR
-
-# (anahtar, etiket, tip)  tip: "metin" | "tarih" | "sayi"
-DUZENLENEBILIR_ALANLAR = [
-    ("fatura_no",            "Fatura No",            "metin"),
-    ("fatura_tarihi",        "Fatura Tarihi",        "tarih"),
-    ("sirket_adi",           "Şirket Adı",           "metin"),
-    ("vkn",                  "VKN",                  "metin"),
-    ("vergi_dairesi",        "Vergi Dairesi",        "metin"),
-    ("tanim",                "Tanım",                "metin"),
-    ("toplam_miktar",        "Toplam Miktar",        "sayi"),
-    ("kdv_haric_tutar",      "KDV Hariç Tutar",      "sayi"),
-    ("vergiler_dahil_tutar", "Vergiler Dahil Tutar", "sayi"),
-    ("para_birimi",          "Para Birimi",          "metin"),
-    ("sira_no",              "Sıra No",              "sayi"),
-]
+from fatura import DUZENLENEBILIR_ALANLAR, OGRENILEN_ALANLAR  # (anahtar, etiket, tip)
 
 
 def _metin(deger) -> str:

@@ -7,10 +7,10 @@ verirken önce buraya bak; buradaki bir terim bulanıklaşırsa burada keskinle�
 ## Alan terimleri
 
 **Fatura satırı** — Tek bir faturadan çıkarılan alanlar kümesi (fatura no, tarih,
-şirket, VKN, tutarlar, kaynak dosya yolu). Taşıyıcısı düz bir `dict`; sekiz
-modül aynı anahtarları paylaşır. Satırdan *türetilen* değerler (`kaynak`,
-`dosya_adi`) `fatura.py`'de toplandı — alan meta tablosu bilinçli olarak
-ertelendi (bkz. `docs/aday-02-devir.md`).
+şirket, VKN, tutarlar, kaynak dosya yolu). Taşıyıcısı düz bir `dict`; şeması
+`fatura.ALANLAR` tablosunda: Excel sütunu, form etiketi/tipi ve öğrenilirlik tek
+yerde durur, `SUTUN`/`DUZENLENEBILIR_ALANLAR`/`OGRENILEN_ALANLAR` ondan türer.
+Türetilen değerler (`kaynak`, `dosya_adi`) de aynı modülde.
 
 **Kaynak** — Bir fatura satırının verisinin nereden geldiği: `Dijital` (PDF'in
 gömülü metin katmanı), `OCR` (PDF görsele çevrilip modele gönderildi) veya `XML`
