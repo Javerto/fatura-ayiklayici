@@ -21,6 +21,7 @@ import fitz
 import webview
 from dotenv import load_dotenv, set_key
 
+import fatura
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
 from extraction import veri_dogrula
@@ -417,10 +418,9 @@ class Api:
                 "i":        i,
                 "form":     satir_form_degerleri(satir),
                 "uyarilar": veri_dogrula(satir),
-                "dosya":    os.path.basename(yol),
+                "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
-                "kaynak":   satir.get("_teknik_bilgi")
-                            or ("XML" if yol.lower().endswith(".xml") else ""),
+                "kaynak":   fatura.kaynak(satir),
             })
         return {"t": "review", "satirlar": satirlar,
                 # Alan adı/etiketleri Python'dan gelir; arayüz yalnızca

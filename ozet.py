@@ -9,6 +9,8 @@ ozet_hesapla(satirlar) üç blok döner:
 from collections import defaultdict
 from datetime import date
 
+from fatura import kaynak
+
 
 def _para_birimi(s: dict) -> str:
     pb = str(s.get("para_birimi") or "").strip().upper()
@@ -28,14 +30,7 @@ def _kdv(s: dict):
 
 
 def _kaynak(s: dict) -> str:
-    # excel_utils'teki Kaynak sütunu kuralıyla aynı: _teknik_bilgi öncelikli,
-    # yoksa dosya uzantısından XML; ikisi de yoksa Bilinmiyor.
-    tb = str(s.get("_teknik_bilgi") or "").strip()
-    if tb:
-        return tb
-    if str(s.get("dosya_yolu") or "").lower().endswith(".xml"):
-        return "XML"
-    return "Bilinmiyor"
+    return kaynak(s, "Bilinmiyor")
 
 
 def ozet_hesapla(satirlar: list[dict]) -> dict:

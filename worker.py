@@ -12,6 +12,7 @@ import queue
 import threading
 import time
 
+import fatura
 import gemini
 from extraction import (
     xml_den_veri_cek, pdf_den_veri_cek, pdf_text_ayikla,
@@ -109,8 +110,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
         uyarilar = veri_dogrula(veri)
-        dosya_yolu = str(veri.get("dosya_yolu") or "")
-        dosya_adi = os.path.basename(dosya_yolu) or "bilinmiyor"
+        dosya_adi = fatura.dosya_adi(veri, "bilinmiyor")
         # Süre yalnızca arayüz içindir; Excel'e sızmasın diye pop ile alınır.
         log_q.put(("fatura", {
             "dosya":       dosya_adi,
@@ -118,8 +118,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             "sirket_adi":  veri.get("sirket_adi") or "-",
             "tutar":       veri.get("vergiler_dahil_tutar"),
             "para_birimi": veri.get("para_birimi") or "TRY",
-            "kaynak":      veri.get("_teknik_bilgi")
-                           or ("XML" if dosya_yolu.lower().endswith(".xml") else ""),
+            "kaynak":      fatura.kaynak(veri),
             "uyarilar":    uyarilar,
             "sure":        veri.pop("_sure", None),
         }))

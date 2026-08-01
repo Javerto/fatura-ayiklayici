@@ -7,13 +7,15 @@ verirken önce buraya bak; buradaki bir terim bulanıklaşırsa burada keskinle�
 ## Alan terimleri
 
 **Fatura satırı** — Tek bir faturadan çıkarılan alanlar kümesi (fatura no, tarih,
-şirket, VKN, tutarlar, kaynak dosya yolu). Bugün adı olmayan bir `dict`; sekiz
-modül aynı anahtarları paylaşır. Bir *Fatura* modülüne dönüştürülmesi mimari
-incelemede "Aday 02" olarak duruyor.
+şirket, VKN, tutarlar, kaynak dosya yolu). Taşıyıcısı düz bir `dict`; sekiz
+modül aynı anahtarları paylaşır. Satırdan *türetilen* değerler (`kaynak`,
+`dosya_adi`) `fatura.py`'de toplandı — alan meta tablosu bilinçli olarak
+ertelendi (bkz. `docs/aday-02-devir.md`).
 
 **Kaynak** — Bir fatura satırının verisinin nereden geldiği: `Dijital` (PDF'in
 gömülü metin katmanı), `OCR` (PDF görsele çevrilip modele gönderildi) veya `XML`
-(UBL e-fatura doğrudan ayrıştırıldı). Satırda `_teknik_bilgi` alanında durur.
+(UBL e-fatura doğrudan ayrıştırıldı). Satırda `_teknik_bilgi` alanında durur,
+`fatura.kaynak(satir)` ile okunur (yoksa dosya uzantısından türetilir).
 
 **Uyarı** — `(alan, mesaj)` çifti. Veriyi reddetmez, kullanıcıya gösterilir.
 Alan adı, gözden geçirme ekranının uyarıyı hangi girdinin altında göstereceğini

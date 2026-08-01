@@ -9,6 +9,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 from hatalar import ExcelHatasi
+from fatura import kaynak as fatura_kaynak   # yerel `kaynak` adlarıyla çakışmasın
 from ozet import ozet_hesapla
 
 SUTUN = {
@@ -227,9 +228,7 @@ def excel_olustur(satirlar: list, cikti: str):
         gc.alignment = Alignment(horizontal="center", vertical="center")
 
         # Kaynak sütunu: Dijital / OCR (PDF) veya XML
-        kaynak = s.get("_teknik_bilgi") or \
-            ("XML" if dosya_yolu.lower().endswith(".xml") else "")
-        kc = ws.cell(row=ri, column=SUTUN["kaynak"], value=kaynak)
+        kc = ws.cell(row=ri, column=SUTUN["kaynak"], value=fatura_kaynak(s))
         kc.font, kc.border = f10, kenar
         kc.alignment = Alignment(horizontal="center", vertical="center")
         if zebra:
