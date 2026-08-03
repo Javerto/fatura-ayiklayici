@@ -1,25 +1,36 @@
 # Fatura Ayıklayıcı (Invoice Extractor)
 
-Türkçe PDF ve XML e-faturalarından otomatik veri çıkarma uygulaması. Google Gemini AI kullanarak fatura bilgilerini okur ve düzenli bir Excel dosyasına aktarır.
+Türkçe PDF ve XML e-faturalarından otomatik veri çıkarma uygulaması. Google Gemini AI kullanarak fatura bilgilerini okur, siz onayladıktan sonra düzenli bir Excel dosyasına aktarır.
 
 ## 🚀 Özellikler
 
-- **Hibrid PDF İşleme:** Dijital PDF'lerde doğrudan metin üzerinden, taranmış (resim) PDF'lerde ise gelişmiş OCR (Vision) üzerinden veri ayıklar.
+- **Hibrid PDF İşleme:** Dijital PDF'lerde doğrudan metin üzerinden, taranmış (resim) PDF'lerde ise OCR (Vision) üzerinden veri ayıklar.
 - **XML Desteği:** UBL formatındaki e-faturaları (XML) doğrudan ve hatasız ayrıştırır.
-- **Yapay Zeka Gücü:** Veri çıkarma için Google'ın en yeni Gemini AI modellerini kullanır.
-- **Paralel İşleme:** PDF dosyalarını 5 iş parçacığı (thread) ile hızlıca işler.
-- **Akıllı Excel Çıktısı:** Kaynak dosyalara doğrudan tıklanabilir bağlantılar içeren, düzenli bir Excel tablosu oluşturur.
+- **Onay Ekranı:** Çıkarılan veriler **doğrudan Excel'e yazılmaz.** Önce gözden geçirme ekranı açılır; faturaları düzeltir, gerekirse hariç tutar, sonra onaylarsınız. İptal ederseniz hiçbir şey yazılmaz.
+- **Öğrenen Düzeltmeler:** Bir firmanın adını veya vergi dairesini düzeltirken "bu firma için hatırla" derseniz, aynı VKN'li sonraki faturalarda otomatik uygulanır.
+- **Veri Uyarıları:** Fatura no uzunluğu, VKN biçimi, boş tarih ve tutarlar arasındaki KDV oranı tutarlılığı kontrol edilir. Uyarılar, ait oldukları alanın altında gösterilir.
+- **Paralel İşleme:** PDF dosyalarını 5 iş parçacığı (thread) ile işler; ücretsiz kotayı aşmamak için dakikada 14 istekle sınırlar.
+- **Akıllı Excel Çıktısı:** Kaynak dosyalara tıklanabilir bağlantılar, her satırın hangi yolla okunduğunu (Dijital/OCR/XML) gösteren "Kaynak" sütunu ve otomatik **Özet sayfası** (aylık ve firma bazlı, para birimi ayrımıyla).
 - **Artımlı Çalışma:** Daha önce işlenmiş faturaları algılar ve atlar, sadece yeni eklenenleri işler.
-- **Modern Arayüz:** Catppuccin temalı, koyu ve açık mod desteği sunan kullanıcı dostu GUI.
+
+## 🖥️ Arayüz
+
+Arayüz **pywebview** penceresinde çalışan HTML/CSS/JS'tir; Python tüm mantığı elinde tutar, tarayıcı yalnızca görüntüleme katmanıdır. Windows'un hazır **WebView2** bileşenini kullanır, ayrıca bir tarayıcı kurulumu gerektirmez.
+
+- **Tek pencere.** Gözden geçirme ekranı ayrı bir pencere açmaz, ana ekranın yerine geçer.
+- **Altı tema:** Mocha (varsayılan), Macchiato, Frappé, Nord (koyu) ve Latte, Kağıt (açık). Seçim `.env`'e kaydedilir.
+- **Boyutlandırılabilir pencere;** boyut hatırlanır. (Konum bilinçli olarak saklanmaz — uzak masaüstünde çözünürlük değişince pencere ekran dışında kalabiliyor.)
+- **Gözden geçirme ekranı üç sütunlu:** solda fatura listesi, ortada düzenleme formu, sağda kaynak PDF önizlemesi (yakınlaştırma ve sayfa gezinme ile). Pencere daraldığında önizleme kapanır.
+- Formda **"Uygula" butonu yoktur** — alandan çıktığınızda değişiklik uygulanır ve uyarılar tazelenir.
 
 ## 🛠️ Kurulum
 
 ### 1. Gereksinimler
-- Python 3.11 veya üzeri.
-- Google Gemini API Key ([Google AI Studio](https://aistudio.google.com/)'dan ücretsiz alabilirsiniz).
+- Python 3.11 veya üzeri
+- Windows (WebView2 bileşeni; Windows 10/11'de Edge ile birlikte kurulu gelir)
+- Google Gemini API Key ([Google AI Studio](https://aistudio.google.com/)'dan ücretsiz alabilirsiniz)
 
 ### 2. Bağımlılıkları Yükleme
-Projeyi klonladıktan sonra terminalde şu komutu çalıştırın:
 ```bash
 pip install -r requirements.txt
 ```
@@ -27,7 +38,8 @@ pip install -r requirements.txt
 ### 3. Yapılandırma
 - Proje klasöründeki `.env.example` dosyasının adını `.env` olarak değiştirin.
 - İçindeki `GEMINI_API_KEY` kısmına kendi API anahtarınızı yapıştırın.
-*(Not: Uygulama ilk açılışta API key girilmemişse size otomatik olarak soracaktır).*
+
+*(Not: Uygulama ilk açılışta API key girilmemişse size otomatik olarak soracaktır. EXE olarak çalışırken ayarlar `%APPDATA%\FaturaAyiklayici` altında tutulur.)*
 
 ## 📖 Kullanım
 
@@ -37,37 +49,54 @@ python main.py
 ```
 
 ### Adımlar
-1. **Klasör Seç:** Faturalarınızın (PDF/XML) bulunduğu klasörü seçin.
-2. **Başlat:** İşlemi başlatın. Log ekranından hangi faturanın dijital, hangisinin OCR ile okunduğunu takip edebilirsiniz.
-3. **Excel'i Aç:** İşlem bittiğinde oluşan dosyayı tek tıkla açın.
+1. **Klasör Seç:** Faturalarınızın (PDF/XML) bulunduğu klasörü seçin. Son kullandığınız klasör hatırlanır.
+2. **Başlat:** Durum kartından ilerlemeyi, kalan süreyi ve başarılı/uyarılı/atlanan dağılımını takip edin.
+3. **Gözden Geçir:** İşlem bitince onay ekranı açılır. Uyarılı faturaları düzeltin, istemediklerinizi hariç tutun.
+4. **Onayla:** Excel yazılır. **Onaylayana kadar dosyaya dokunulmaz.**
+
+### Testler
+```bash
+python -m pytest
+```
 
 ### EXE Olarak Derleme (Windows)
-Uygulamayı kurulum gerektirmeyen tek bir `.exe` dosyasına dönüştürmek için:
 ```bash
 build.bat
 ```
-Çıktı `dist/` klasörü içinde oluşacaktır.
+Çıktı `dist/FaturaAyiklayici.exe` olarak oluşur (~44 MB). Betik temiz bir sanal ortam kurar, `web/` klasörünü EXE'nin içine paketler ve geçici dosyaları temizler.
 
 ## ⚙️ Özelleştirme
 
 ### Prompt Güncelleme
-Uygulamanın faturalardan hangi alanları çıkaracağını veya nasıl davranacağını değiştirmek isterseniz `extraction.py` dosyasındaki `PROMPT_SABLON` değişkenini düzenleyebilirsiniz. 
+Uygulamanın faturalardan hangi alanları çıkaracağını değiştirmek için `extraction.py` içindeki `PROMPT_SABLON` değişkenini düzenleyin.
 
-Örneğin, sadece belirli ürün kalemlerini veya özel vergi kodlarını çekmek için promptu Türkçe olarak güncellemeniz yeterlidir.
+### Yeni Alan Ekleme
+Fatura satırının şeması `fatura.py` içindeki `ALANLAR` tablosundadır. Excel sütunu, başlığı, form etiketi ve tipi tek bir satırda tanımlanır; Excel/form/öğrenme listeleri bu tablodan türetilir.
 
-### Model Seçimi
-Varsayılan olarak `gemma-4-31b-it` kullanılmaktadır. Daha yüksek doğruluk için `extraction.py` içindeki `GEMMA_MODEL` değerini değiştirebilirsiniz.
+### Model ve Kota Ayarları
+Modelle ilgili her sabit `gemini.py` içindedir: `GEMMA_MODEL`, `MAX_DENEME`, `TIMEOUT_SANIYE`, `RPM_LIMIT`, `THINKING_BUDGET`.
+
+### Tema Ekleme
+`web/tema.css` içindeki bir tema bloğunu kopyalayıp renkleri değiştirin, `web/tema.js` içindeki `TEMALAR` listesine ekleyin. Başka dosyaya dokunmanız gerekmez.
 
 ## 📂 Proje Yapısı
-- `main.py`: Uygulamanın giriş noktası.
-- `api.py`: Arayüz ile Python arasındaki köprü (klasör seçimi, ayarlar, gözden geçirme).
-- `web/`: HTML/CSS/JS arayüz (pywebview penceresinde çalışır).
-- `review.py`: Gözden geçirme/düzeltme ekranının saf mantığı.
-- `worker.py`: Arka plan işleme döngüsü (UI'dan bağımsız iş mantığı).
-- `extraction.py`: AI ve XML tabanlı veri çıkarma motoru.
-- `excel_utils.py`: Excel raporlama ve dosya bağlantıları.
-- `tests/`: pytest test paketi (`python -m pytest`).
-- `build.bat`: Windows için derleme betiği.
+
+| Dosya | Sorumluluk |
+|---|---|
+| `main.py` | Giriş noktası; pywebview penceresini açar |
+| `api.py` | Arayüz ↔ Python köprüsü (klasör seçimi, ayarlar, gözden geçirme, geçmiş) |
+| `web/` | Arayüzün tamamı: `index.html`, `app.js`, `review.js`, `style.css`, `tema.css`, `tema.js` |
+| `worker.py` | Arka plan işleme döngüsü (arayüzden bağımsız) |
+| `extraction.py` | PDF/XML'den veri çıkarma ve doğrulama |
+| `gemini.py` | Modele açılan tek kapı: hız sınırlayıcı, yeniden deneme, hata sınıflandırma |
+| `fatura.py` | Fatura satırının şeması (`ALANLAR`) ve türetilmiş değerler |
+| `review.py` | Gözden geçirme ekranının saf mantığı |
+| `duzeltme.py` | VKN bazlı öğrenen düzeltme kuralları |
+| `excel_utils.py` | Excel okuma/yazma, bağlantılar, Özet sayfası |
+| `ozet.py` | Özet hesaplama (aylık, firma, para birimi bazlı) |
+| `hatalar.py` | Hata sınıfları |
+| `tests/` | pytest test paketi (179 test) |
+| `build.bat` | Windows EXE derleme betiği |
 
 ## 📜 Lisans
 Bu proje MIT lisansı ile lisanslanmıştır. Özgürce kullanabilir, değiştirebilir ve dağıtabilirsiniz.
