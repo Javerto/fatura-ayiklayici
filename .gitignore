@@ -6,6 +6,8 @@ __pycache__/
 gecmis.json
 altin/
 duzeltmeler.json
+alanlar.json
+*.tmp
 islenmis_dosyalar.json
 *.xlsx
 !tests/fixtures/*.xlsx
