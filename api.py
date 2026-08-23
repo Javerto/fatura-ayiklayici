@@ -243,6 +243,7 @@ class Api:
         if len(nihai) == len(self._review["mevcut"]):
             # Tüm yeni faturalar hariç tutuldu — mevcut Excel'e dokunma.
             self._gecmis_kaydet(0, len(self._atlanmis))
+            self._onizlemeyi_kapat()
             self._review = None
             return {"ok": True, "yazilan": 0, "dokunulmadi": True,
                     "cikti": self._mevcut_cikti()}
@@ -253,6 +254,7 @@ class Api:
             return {"hata": str(e)}          # pencere açık kalsın, düzenlemeler kaybolmasın
 
         self._cikti = self._review["cikti"]
+        self._onizlemeyi_kapat()
         kaydedilen = self._kurallari_ogren(yeni, hatirla, haric_kume)
         yazilan = len(nihai) - len(self._review["mevcut"])
         self._gecmis_kaydet(yazilan, len(self._atlanmis))

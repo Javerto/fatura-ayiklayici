@@ -97,6 +97,29 @@ def test_gecersiz_duzenleme_indeksi_yok_sayilir(api, tmp_path):
     assert [s["fatura_no"] for s in satirlar] == ["GIB2024000000101"]
 
 
+class _SahteBelge:
+    """fitz.Document yerine: kapatıldı mı onu sayar."""
+    def __init__(self):
+        self.kapandi = False
+
+    def close(self):
+        self.kapandi = True
+
+
+@pytest.mark.parametrize("haric", [[], [0]], ids=["yazildi", "hepsi_haric"])
+def test_onaydan_sonra_onizleme_kapanir(api, tmp_path, haric):
+    """Açık kalan PDF'i MuPDF süreç boyunca kilitli tutar; kullanıcı onayladığı
+    faturayı Explorer'da taşıyamaz/silemez. İptal yolu bunu zaten kapatıyordu."""
+    _review_kur(api, tmp_path, [_satir("GIB2024000000101")])
+    belge = _SahteBelge()
+    api._pdf_doc, api._pdf_yol = belge, r"C:\x\GIB2024000000101.pdf"
+
+    api.review_onayla({}, haric, [])
+
+    assert belge.kapandi, "önizleme belgesi kapatılmadı — dosya kilitli kalır"
+    assert api._pdf_doc is None and api._pdf_yol is None
+
+
 def test_mevcut_satirlar_korunur(api, tmp_path):
     """Yeni faturalar eskilerin üzerine değil, yanına yazılmalı."""
     cikti = _review_kur(api, tmp_path, [_satir("GIB2024000000102")],
