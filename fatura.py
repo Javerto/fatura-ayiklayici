@@ -73,6 +73,17 @@ def kaynak(satir: dict, bilinmeyen: str = "") -> str:
     return bilinmeyen
 
 
+def fatura_no_anahtari(satir: dict) -> str:
+    """Mükerrer karşılaştırması için normalize edilmiş fatura no (boşsa "").
+
+    Arşivin tekilliği bugün dosya adından geliyor (`mevcut_verileri_oku`);
+    aynı fatura farklı adla klasöre düşerse o kontrol tutmuyor. Karşılaştırma
+    büyük harfe çevrilir: Excel'den okunan eski satırlarla model çıktısı
+    yalnızca harf büyüklüğünde ayrışabilir.
+    """
+    return str(satir.get("fatura_no") or "").strip().upper()
+
+
 def dosya_adi(satir: dict, bos: str = "") -> str:
     """Kaynak dosyanın adı (yolsuz)."""
     return os.path.basename(str(satir.get("dosya_yolu") or "")) or bos

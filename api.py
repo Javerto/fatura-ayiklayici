@@ -212,10 +212,31 @@ class Api:
         yeni = self._review["yeni"]
         return yeni[i] if 0 <= i < len(yeni) else None
 
+    def _baska_nolar(self, haric_i: int | None = None) -> set[str]:
+        """Fatura no'ları — mükerrer uyarısı için karşılaştırma kümesi.
+
+        Arşivdeki her no, artı yeni satırlarda birden fazla geçen no'lar.
+        `haric_i` verilirse o satır yokmuş gibi hesaplanır (düzenlenen satır).
+        """
+        r = self._review or {"mevcut": [], "yeni": []}
+        nolar = {fatura.fatura_no_anahtari(s) for s in r["mevcut"]}
+        yeni = [fatura.fatura_no_anahtari(s) for j, s in enumerate(r["yeni"])
+                if j != haric_i]
+        if haric_i is None:
+            # Tek satır için değil, tüm liste için: iki kez geçen no mükerrerdir.
+            nolar |= {n for n in yeni if yeni.count(n) > 1}
+        else:
+            nolar |= set(yeni)
+        nolar.discard("")
+        return nolar
+
     def satir_dogrula(self, i: int, form: dict) -> list:
         """Formdaki hâliyle satırın uyarıları — düzenleme sırasında çağrılır."""
         satir = self._satir(i)
-        return veri_dogrula(form_satira_uygula(satir, form)) if satir else []
+        if not satir:
+            return []
+        return veri_dogrula(form_satira_uygula(satir, form),
+                            self._baska_nolar(haric_i=int(i)))
 
     def review_onayla(self, duzenlemeler: dict, haric: list,
                       hatirla: list) -> dict:
@@ -409,13 +430,14 @@ class Api:
     def _review_olayi(self, payload: dict) -> dict:
         """Gözden geçirme ekranının ihtiyaç duyduğu metin izdüşümü."""
         self._atlanmis = payload["atlanmis"]
+        baska_nolar = self._baska_nolar()
         satirlar = []
         for i, satir in enumerate(payload["yeni"]):
             yol = str(satir.get("dosya_yolu") or "")
             satirlar.append({
                 "i":        i,
                 "form":     satir_form_degerleri(satir),
-                "uyarilar": veri_dogrula(satir),
+                "uyarilar": veri_dogrula(satir, baska_nolar),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
                 "kaynak":   fatura.kaynak(satir),

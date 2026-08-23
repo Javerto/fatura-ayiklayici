@@ -158,7 +158,8 @@ def _json_ayikla(cevap: str) -> dict:
     raise ModelHatasi("Modelden geçersiz JSON yanıtı alındı. Dosya atlanıyor.")
 
 
-def veri_dogrula(veri: dict) -> list[tuple[str, str]]:
+def veri_dogrula(veri: dict,
+                 baska_nolar: set[str] | None = None) -> list[tuple[str, str]]:
     """Fatura verisindeki olası sorunları (alan, mesaj) çiftleri olarak döner.
 
     Dönüş değeri boşsa veri temiz demektir.
@@ -166,6 +167,9 @@ def veri_dogrula(veri: dict) -> list[tuple[str, str]]:
 
     Alan adı, uyarının hangi düzenlenebilir alandan kaynaklandığını söyler;
     gözden geçirme ekranı uyarıyı o alanın altında gösterir.
+
+    `baska_nolar`: bu satır dışındaki faturaların normalize fatura no'ları
+    (bkz. `fatura.fatura_no_anahtari`). Verilirse mükerrer kayıt uyarılır.
     """
     uyarilar = []
 
@@ -182,6 +186,11 @@ def veri_dogrula(veri: dict) -> list[tuple[str, str]]:
         if len(fn) != 16:
             ekle("fatura_no",
                  f"Fatura no uzunluğu {len(fn)} karakter, otomatik düzeltilemedi — 16 olmalı: '{fn}'")
+        # Arşivin tekilliği dosya adından geliyor; aynı fatura farklı adla
+        # (portaldan ikinci indirme, "fatura(1).pdf") gelirse o kontrol tutmuyor.
+        if baska_nolar and fn.upper() in baska_nolar:
+            ekle("fatura_no",
+                 f"Bu fatura no başka bir kayıtta da var: '{fn}' — mükerrer olabilir")
 
     # sira_no — 3 haneden büyükse muhtemelen teşvik no ile karışmış
     sn = veri.get("sira_no")
