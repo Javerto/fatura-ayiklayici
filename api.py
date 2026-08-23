@@ -85,6 +85,7 @@ class Api:
         self._baslangic = 0.0
         self._review = None            # onay bekleyen worker çıktısı
         self._calisiyor = False        # bir worker sürüyor mu
+        self._baslatma_kilidi = threading.Lock()   # `basla` kontrol-ve-ata
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
 
@@ -142,34 +143,38 @@ class Api:
         # Arayüz butonu kilitliyor ama JS bir güven sınırı: ikinci bir çağrı
         # `_log_q`'yu değiştirip ilk worker'ın tüm çıktısını (harcanan kotayla
         # birlikte) okunmayan bir kuyrukta bırakıyordu.
-        if self._calisiyor:
-            return {"hata": "Zaten bir işlem sürüyor."}
-        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if not api_key:
-            return {"hata": "api_key"}
-        klasor = (ayarlar.get("klasor") or "").strip()
-        if not klasor or not os.path.isdir(klasor):
-            return {"hata": "Lütfen geçerli bir klasör seçin."}
+        # Kilit şart: pywebview her js_api çağrısını ayrı thread'de işliyor,
+        # bayrağı thread başlatıldıktan sonra set etmek iki çağrının da
+        # guard'ı geçmesine izin veriyordu.
+        with self._baslatma_kilidi:
+            if self._calisiyor:
+                return {"hata": "Zaten bir işlem sürüyor."}
+            api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+            if not api_key:
+                return {"hata": "api_key"}
+            klasor = (ayarlar.get("klasor") or "").strip()
+            if not klasor or not os.path.isdir(klasor):
+                return {"hata": "Lütfen geçerli bir klasör seçin."}
 
-        cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
-        self._klasor = klasor
-        self._cikti = os.path.join(klasor, cikti_adi)
-        self._atlanmis = []
-        self._baslangic = time.time()
-        self._stop_event.clear()
-        self._log_q = queue.Queue()
+            cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
+            self._klasor = klasor
+            self._cikti = os.path.join(klasor, cikti_adi)
+            self._atlanmis = []
+            self._baslangic = time.time()
+            self._stop_event.clear()
+            self._log_q = queue.Queue()
+            self._calisiyor = True
 
-        retry = ayarlar.get("retry") or None
-        threading.Thread(
-            target=worker,
-            args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
-            kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
-                    "kurallar": kurallari_oku(self._duzeltme),
-                    "retry_dosyalar": retry},
-            daemon=True,
-        ).start()
-        self._calisiyor = True
-        threading.Thread(target=self._pompa, daemon=True).start()
+            retry = ayarlar.get("retry") or None
+            threading.Thread(
+                target=worker,
+                args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
+                kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
+                        "kurallar": kurallari_oku(self._duzeltme),
+                        "retry_dosyalar": retry},
+                daemon=True,
+            ).start()
+            threading.Thread(target=self._pompa, daemon=True).start()
         return {"ok": True}
 
     def durdur(self) -> bool:

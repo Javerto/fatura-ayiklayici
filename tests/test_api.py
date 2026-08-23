@@ -1,4 +1,6 @@
 """Api sınıfının pywebview sözleşmesine uyduğunu doğrular."""
+import threading
+
 from api import Api
 
 
@@ -26,3 +28,30 @@ def test_calisan_islem_varken_yeniden_baslatilmaz():
     api = Api()
     api._calisiyor = True
     assert api.basla({"klasor": ".", "cikti": "x"}) == {"hata": "Zaten bir işlem sürüyor."}
+
+
+def test_es_zamanli_iki_basla_cagrisindan_biri_reddedilir(tmp_path, monkeypatch):
+    """`_calisiyor` bayrağı worker thread'i başlatıldıktan *sonra* set
+    edildiğinde iki eşzamanlı çağrı da guard'ı geçebiliyordu; pywebview her
+    js_api çağrısını ayrı thread'de işliyor. İki worker demek, ilkinin
+    çıktısının (ve harcadığı Gemini kotasının) çöpe gitmesi demek.
+    """
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    api = Api(kok=tmp_path)
+    monkeypatch.setattr("api.worker", lambda *a, **k: None)
+    monkeypatch.setattr(api, "_pompa", lambda: None)
+
+    kapi = threading.Barrier(2)
+    sonuclar = []
+
+    def cagir():
+        kapi.wait()
+        sonuclar.append(api.basla({"klasor": str(tmp_path), "cikti": "x"}))
+
+    threadler = [threading.Thread(target=cagir) for _ in range(2)]
+    for t in threadler:
+        t.start()
+    for t in threadler:
+        t.join()
+
+    assert sum("ok" in s for s in sonuclar) == 1, sonuclar
