@@ -155,6 +155,9 @@ def rapor(klasor: pathlib.Path):
         print(".", end="", flush=True)
 
     print("\n")
+    # Model adı tabloya yazılır: iki koşunun çıktısı yan yana konacak, hangisinin
+    # hangi modele ait olduğu hatırlanacak şey olmamalı.
+    print(f"Model: {gemini.GEMMA_MODEL}   Fatura: {len(dosyalar)}")
     print(f"{'Alan':<22}{'Doğru':>7}{'Toplam':>8}{'%':>8}")
     print("-" * 45)
     for alan in ALAN_TIPI:

@@ -16,6 +16,7 @@ Uyku (`uyu`) ve saat (`saat`) dışarıdan verilebilir: geri çekilme merdivenin
 gerçek saatle sınamak 225 saniye sürerdi, yani hiç sınanmazdı.
 """
 
+import os
 import re
 import threading
 import time
@@ -27,7 +28,11 @@ from google.genai import types
 from hatalar import APIKeyHatasi, InternetHatasi
 
 # ─── AYARLAR ─────────────────────────────────────────────────────────────────
-GEMMA_MODEL     = "gemma-4-31b-it"   # 2026-08-01'de models.list() ile doğrulandı
+# Varsayılan model. FA_MODEL ortam değişkeni yalnızca altın küme A/B'si için:
+# `FA_MODEL=gemini-3.5-flash-lite python altin.py` ile aynı küme başka bir
+# modele koşulur, kod değiştirilip geri alınmaz. Varsayılanı değiştirmek
+# ölçüm sonrası bilinçli bir karardır.
+GEMMA_MODEL     = os.getenv("FA_MODEL", "gemma-4-31b-it")   # 2026-08-01'de models.list() ile doğrulandı
 MAX_DENEME      = 5
 TIMEOUT_SANIYE  = 180
 THINKING_BUDGET = -1
