@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .superpowers/
 gecmis.json
+altin/
 duzeltmeler.json
 islenmis_dosyalar.json
 *.xlsx
