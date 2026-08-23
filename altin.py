@@ -180,7 +180,13 @@ def main(argv=None):
     p.add_argument("--klasor", default=VARSAYILAN_KLASOR)
     p.add_argument("--olustur", action="store_true",
                    help="Eksik beklenen JSON'ları modelden taslak olarak üret")
+    p.add_argument("--model", help="A/B için model adı (varsayılan: gemini.GEMMA_MODEL)")
     a = p.parse_args(argv)
+
+    if a.model:
+        # PowerShell'de `VAR=deger komut` yok; ortam değişkenini kurcalamak
+        # yerine sabiti burada değiştirmek yeterli (metin_uret çağrı anında okur).
+        gemini.GEMMA_MODEL = a.model
 
     klasor = pathlib.Path(a.klasor)
     if not klasor.is_dir():
