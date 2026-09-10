@@ -30,6 +30,20 @@ def test_calisan_islem_varken_yeniden_baslatilmaz():
     assert api.basla({"klasor": ".", "cikti": "x"}) == {"hata": "Zaten bir işlem sürüyor."}
 
 
+def test_pencere_kapaninca_calisan_islem_durdurulur(tmp_path):
+    """ThreadPoolExecutor thread'leri daemon değildir; Python çıkmadan önce
+    kuyruktaki HER işi bitirir. Durdurma sinyali verilmezse pencere kapandıktan
+    sonra süreç görünmeden kalan tüm faturaları Gemini'ye gönderiyordu —
+    kota harcanıyor, sonuç hiçbir yere yazılmıyor, EXE dakikalarca kilitli.
+    """
+    api = Api(kok=tmp_path)
+    api._pencere = None          # boyut okunamasa bile durdurma gerçekleşmeli
+
+    api._pencere_kapaniyor()
+
+    assert api._stop_event.is_set()
+
+
 def test_es_zamanli_iki_basla_cagrisindan_biri_reddedilir(tmp_path, monkeypatch):
     """`_calisiyor` bayrağı worker thread'i başlatıldıktan *sonra* set
     edildiğinde iki eşzamanlı çağrı da guard'ı geçebiliyordu; pywebview her

@@ -421,7 +421,11 @@ class Api:
                 self._js("olaylar", gonderilecek)
 
     def _pencere_kapaniyor(self):
-        """Kapanışta pencere boyutunu sakla (main.py'de closing'e bağlanır)."""
+        """Kapanışta işlemi durdur ve pencere boyutunu sakla (main.py'de
+        closing'e bağlanır)."""
+        # ThreadPoolExecutor thread'leri daemon değil: sinyal verilmezse Python
+        # çıkmadan önce kuyruktaki her faturayı görünmeden Gemini'ye gönderir.
+        self._stop_event.set()
         try:
             self._ayar_yaz("PENCERE",
                            f"{int(self._pencere.width)}x{int(self._pencere.height)}")
