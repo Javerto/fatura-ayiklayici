@@ -216,7 +216,7 @@ in light ones.
 - `ExcelHatasi` – Permission error when saving Excel; warns but continues.
 
 ### Retry Logic
-- Network/timeout/429/503 errors trigger a retry with backoff (15/30/45/60/75 s, up to `MAX_DENEME` attempts) **inside `gemini.ModelIstemcisi`**; callers see either a result or a classified exception. If the reply carries its own `retry in Ns`, that wins over the ladder.
+- Network/timeout/429/500/503 errors trigger a retry with backoff (15/30/45/60/75 s, up to `MAX_DENEME` attempts) **inside `gemini.ModelIstemcisi`**; callers see either a result or a classified exception. If the reply carries its own `retry in Ns`, that wins over the ladder.
 - API‑key errors are not retried; the UI opens the API‑key modal.
 
 ## Git & Commit Conventions

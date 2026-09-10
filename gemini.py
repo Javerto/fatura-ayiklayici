@@ -42,9 +42,13 @@ RPM_LIMIT       = 14   # dakikada max istek (limitin biraz altında güvenli tar
 # Geçici sayılan (yeniden denenen) ve kalıcı sayılan hata imzaları. Sağlayıcı
 # yapılandırılmış bir hata kodu vermediği için eşleme hata METNİ üzerinden;
 # tests/test_gemini.py bu sınıflandırmayı gerçek Google yanıtlarına karşı çiviler.
+# "500" tek başına değil "500 internal": çıplak "500" bir token/boyut sayısının
+# içinde de geçebilir ve kalıcı bir 400 hatası boşuna 225 sn beklenirdi.
+SUNUCU_HATALARI  = ("500 internal", "internal error")
 TEKRAR_HATALARI  = ("429", "resource_exhausted", "503", "504", "unavailable",
                     "deadline_exceeded", "ssl", "timeout", "readtimeout",
-                    "connecttimeout", "connectionerror", "remoteprotocolerror", "recv")
+                    "connecttimeout", "connectionerror", "remoteprotocolerror", "recv",
+                    *SUNUCU_HATALARI)
 API_KEY_HATALARI = ("api_key_invalid", "api key", "invalid_api_key",
                     "permission_denied", "unauthenticated")
 
@@ -168,6 +172,10 @@ class ModelIstemcisi:
         if "429" in metin or "rate" in metin or "quota" in metin:
             return InternetHatasi(
                 "API istek limiti aşıldı. Birkaç dakika bekleyip tekrar başlatın.")
+        if any(k in metin for k in SUNUCU_HATALARI):
+            return InternetHatasi(
+                "Google sunucusu geçici bir hata verdi (500). Birkaç dakika "
+                "bekleyip tekrar başlatın; işlenen faturalar tekrar gönderilmez.")
         return hata
 
 

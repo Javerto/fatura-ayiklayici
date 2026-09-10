@@ -27,6 +27,14 @@ API_KEY_METNI = (
     "'details': [{'reason': 'API_KEY_INVALID'}]}}"
 )
 
+# Google'ın sunucu tarafı aksaklıkta döndürdüğü metin (2026-09-10, google-genai
+# ServerError). Geçicidir: aynı istek birkaç saniye sonra genelde başarılı olur.
+SUNUCU_HATASI_METNI = (
+    "500 INTERNAL. {'error': {'code': 500, 'message': 'An internal error has "
+    "occurred. Please retry or report in https://developers.generativeai.google"
+    "/guide/troubleshooting', 'status': 'INTERNAL'}}"
+)
+
 
 class SahteZaman:
     """`time` modülünün yerine geçer: uyku anında geçer, saat ileri sarar."""
@@ -128,6 +136,23 @@ def test_baglanti_hatasi_tukenince_internet_mesajiyla_biter(zaman):
         _cagir(zaman, [Gecici("Read timeout on connection")])
 
     assert "İnternet bağlantısı" in str(e.value)
+
+
+def test_sunucu_hatasi_500_yeniden_denenir(zaman):
+    """500 INTERNAL geçicidir; ilk denemede dosyayı atlamak faturayı kaybettirir."""
+    cevap = _cagir(zaman, [Gecici(SUNUCU_HATASI_METNI), "{}"])
+
+    assert cevap == "{}"
+    assert zaman.toplam_uyku == 15
+
+
+def test_sunucu_hatasi_tukenince_turkce_mesajla_biter(zaman):
+    """Ham İngilizce Google metni kullanıcıya ulaşmamalı."""
+    with pytest.raises(InternetHatasi) as e:
+        _cagir(zaman, [Gecici(SUNUCU_HATASI_METNI)])
+
+    assert "Google sunucusu" in str(e.value)
+    assert zaman.toplam_uyku == 225
 
 
 def test_bekleme_mesaji_arayuze_gider(zaman):
