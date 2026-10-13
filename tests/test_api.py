@@ -4,7 +4,7 @@ import threading
 from api import Api
 
 
-def test_api_yalnizca_metot_yayinlar():
+def test_api_yalnizca_metot_yayinlar(tmp_path):
     """Genel niteliklerin hepsi çağrılabilir olmalı.
 
     pywebview (webview/util.py::get_functions) arayüze açacağı API nesnesinin
@@ -13,7 +13,7 @@ def test_api_yalnizca_metot_yayinlar():
     kendisi, ki js_api'ye geri işaret eder — tarama halkaya girip uygulamayı
     açılışta dondurur. Bu bir kez başımıza geldi; test onu geri getirmesin.
     """
-    api = Api()
+    api = Api(kok=tmp_path)
     for ad in dir(api):
         if ad.startswith("_"):
             continue
@@ -21,11 +21,11 @@ def test_api_yalnizca_metot_yayinlar():
             f"Api.{ad} genel bir nitelik — iç durum '_' önekiyle saklanmalı")
 
 
-def test_calisan_islem_varken_yeniden_baslatilmaz():
+def test_calisan_islem_varken_yeniden_baslatilmaz(tmp_path):
     """İkinci `basla` çağrısı `_log_q`'yu değiştirip ilk worker'ın tüm
     çıktısını okunmayan bir kuyrukta bırakıyordu — harcanan Gemini kotası
     boşa gidiyordu. Arayüz butonu kilitliyor ama JS bir güven sınırı."""
-    api = Api()
+    api = Api(kok=tmp_path)
     api._calisiyor = True
     assert api.basla({"klasor": ".", "cikti": "x"}) == {"hata": "Zaten bir işlem sürüyor."}
 

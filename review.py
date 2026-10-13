@@ -2,7 +2,8 @@
 from datetime import datetime
 
 from extraction import to_float, tarih_parse
-from fatura import DUZENLENEBILIR_ALANLAR, OGRENILEN_ALANLAR  # (anahtar, etiket, tip)
+import sema as _sema
+from fatura import DUZENLENEBILIR_ALANLAR, OGRENILEN_ALANLAR  # noqa: F401 (varsayılan şema; dışa açık)
 
 
 def _metin(deger) -> str:
@@ -16,10 +17,10 @@ def _metin(deger) -> str:
     return str(deger)
 
 
-def satir_form_degerleri(row: dict) -> dict:
+def satir_form_degerleri(row: dict, sema=None) -> dict:
     """Satırı, form alanlarına yazılacak metin değerlerine çevirir."""
     return {anahtar: _metin(row.get(anahtar))
-            for anahtar, _, _ in DUZENLENEBILIR_ALANLAR}
+            for anahtar, _, _ in (sema or _sema.VARSAYILAN).duzenlenebilir}
 
 
 def nihai_satirlar(mevcut: list, yeni: list, haric: set) -> list:
@@ -28,14 +29,14 @@ def nihai_satirlar(mevcut: list, yeni: list, haric: set) -> list:
     return list(mevcut) + dahil
 
 
-def form_satira_uygula(row: dict, form: dict) -> dict:
+def form_satira_uygula(row: dict, form: dict, sema=None) -> dict:
     """Form metinlerini tiplerine göre çevirip güncellenmiş satır KOPYASI döndürür.
 
     'sayi'  → to_float, 'tarih' → tarih_parse, 'metin' → strip (boşsa None).
     Düzenlenmeyen alanlar (dosya_yolu, _teknik_bilgi) korunur.
     """
     yeni = dict(row)
-    for anahtar, _, tip in DUZENLENEBILIR_ALANLAR:
+    for anahtar, _, tip in (sema or _sema.VARSAYILAN).duzenlenebilir:
         ham = (form.get(anahtar) or "").strip()
         if tip == "sayi":
             yeni[anahtar] = to_float(ham) if ham else None
@@ -46,10 +47,10 @@ def form_satira_uygula(row: dict, form: dict) -> dict:
     return yeni
 
 
-def ogrenilecek_alanlar(row: dict) -> dict:
+def ogrenilecek_alanlar(row: dict, sema=None) -> dict:
     """Satırdan öğrenilebilir (firma-sabit) alanların dolu olanlarını döndürür."""
     sonuc = {}
-    for alan in OGRENILEN_ALANLAR:
+    for alan in (sema or _sema.VARSAYILAN).ogrenilen:
         deger = row.get(alan)
         if isinstance(deger, str):
             deger = deger.strip()

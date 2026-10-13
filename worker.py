@@ -45,11 +45,13 @@ def is_listesi(klasor: str) -> tuple[list[str], list[str]]:
 
 def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
            stop_event: threading.Event, retry_dosyalar: list | None = None,
-           zoom: float = 1.5, kurallar: dict | None = None, istemci=None):
+           zoom: float = 1.5, kurallar: dict | None = None, istemci=None,
+           sema=None):
     """Fatura işleme döngüsü — ayrı thread'de çalışır.
 
     `istemci` verilmezse gerçek Gemini istemcisi kurulur; testler kendi
-    sahtelerini geçirerek tüm döngüyü ağa çıkmadan çalıştırır.
+    sahtelerini geçirerek tüm döngüyü ağa çıkmadan çalıştırır. `sema` alan
+    setidir (prompt, tipler, öğrenilen alanlar, arşivden okunan alanlar).
     """
 
     def log(tag, mesaj):
@@ -75,7 +77,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         islenmemis_xml = [d for d in retry_dosyalar if d.lower().endswith(".xml")]
         toplam = len(islenmemis_pdf) + len(islenmemis_xml)
         try:
-            mevcut_satirlar, _ = mevcut_verileri_oku(CIKTI)
+            mevcut_satirlar, _ = mevcut_verileri_oku(CIKTI, sema)
         except ExcelHatasi as e:
             log("critical", str(e))
             log_q.put(("done", ([], 0, [])))
@@ -94,7 +96,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             return
 
         try:
-            mevcut_satirlar, islenenmis = mevcut_verileri_oku(CIKTI)
+            mevcut_satirlar, islenenmis = mevcut_verileri_oku(CIKTI, sema)
         except ExcelHatasi as e:
             log("critical", str(e))
             log_q.put(("done", ([], 0, [])))
@@ -122,7 +124,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
 
     def islendi(veri):
         nonlocal siradaki
-        veri = kural_uygula(veri, kurallar)
+        veri = kural_uygula(veri, kurallar, sema)
         yeni_satirlar.append(veri)
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
@@ -203,7 +205,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             log_q.put(("isleniyor", {"dosya": dosya_adi, "tip": tip_etiketi}))
 
             try:
-                return ("ok", sureli(pdf_den_veri_cek(dosya, istemci, zoom,
+                return ("ok", sureli(pdf_den_veri_cek(dosya, istemci, zoom, sema=sema,
                                                       metin=metin), t0))
             except APIKeyHatasi as e:
                 api_hata.set()

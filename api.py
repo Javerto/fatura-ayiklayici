@@ -22,11 +22,12 @@ import webview
 from dotenv import load_dotenv, set_key
 
 import fatura
+import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
 from extraction import veri_dogrula
 from hatalar import ExcelHatasi
-from review import (DUZENLENEBILIR_ALANLAR, form_satira_uygula, nihai_satirlar,
+from review import (form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
 from worker import is_listesi, worker
 
@@ -76,6 +77,10 @@ class Api:
         self._env      = kok / ".env"
         self._gecmis   = kok / "gecmis.json"
         self._duzeltme = kok / "duzeltmeler.json"
+        self._alanlar  = kok / "alanlar.json"
+        # İlk açılışta dosya tohumdan yazılır. Koşu başlarken yeniden okunur;
+        # gözden geçirme ve onay o koşunun şemasıyla çalışır.
+        self._sema = sema.oku(self._alanlar)
         self._pencere = None
         self._log_q = queue.Queue()
         self._stop_event = threading.Event()
@@ -164,6 +169,7 @@ class Api:
             self._stop_event.clear()
             self._log_q = queue.Queue()
             self._calisiyor = True
+            self._sema = sema.oku(self._alanlar)
 
             retry = ayarlar.get("retry") or None
             threading.Thread(
@@ -171,7 +177,8 @@ class Api:
                 args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
                 kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
                         "kurallar": kurallari_oku(self._duzeltme),
-                        "retry_dosyalar": retry},
+                        "retry_dosyalar": retry,
+                        "sema": self._sema},
                 daemon=True,
             ).start()
             threading.Thread(target=self._pompa, daemon=True).start()
@@ -240,7 +247,7 @@ class Api:
         satir = self._satir(i)
         if not satir:
             return []
-        return veri_dogrula(form_satira_uygula(satir, form),
+        return veri_dogrula(form_satira_uygula(satir, form, self._sema),
                             self._baska_nolar(haric_i=int(i)))
 
     def review_onayla(self, duzenlemeler: dict, haric: list,
@@ -261,7 +268,7 @@ class Api:
             except (TypeError, ValueError):
                 continue
             if 0 <= i < len(yeni):
-                yeni[i] = form_satira_uygula(yeni[i], form)
+                yeni[i] = form_satira_uygula(yeni[i], form, self._sema)
 
         haric_kume = {int(x) for x in (haric or [])}
         nihai = nihai_satirlar(self._review["mevcut"], yeni, haric_kume)
@@ -275,7 +282,7 @@ class Api:
                     "cikti": self._mevcut_cikti()}
 
         try:
-            excel_olustur(nihai, self._review["cikti"])
+            excel_olustur(nihai, self._review["cikti"], self._sema)
         except ExcelHatasi as e:
             return {"hata": str(e)}          # pencere açık kalsın, düzenlemeler kaybolmasın
 
@@ -445,7 +452,7 @@ class Api:
             yol = str(satir.get("dosya_yolu") or "")
             satirlar.append({
                 "i":        i,
-                "form":     satir_form_degerleri(satir),
+                "form":     satir_form_degerleri(satir, self._sema),
                 "uyarilar": veri_dogrula(satir, baska_nolar),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
@@ -454,7 +461,7 @@ class Api:
         return {"t": "review", "satirlar": satirlar,
                 # Alan adı/etiketleri Python'dan gelir; arayüz yalnızca
                 # gruplamayı bilir, yeni alan eklenirse kendiliğinden görünür.
-                "alanlar": [list(a) for a in DUZENLENEBILIR_ALANLAR],
+                "alanlar": [list(a) for a in self._sema.duzenlenebilir],
                 "mevcut_sayi": len(payload["mevcut"]),
                 "kesildi": payload.get("kesildi", False),
                 "atlanan": len(payload["atlanmis"])}
@@ -468,9 +475,9 @@ class Api:
             if i >= len(satirlar):
                 continue
             vkn = str(satirlar[i].get("vkn") or "").strip()
-            alanlar = ogrenilecek_alanlar(satirlar[i])
+            alanlar = ogrenilecek_alanlar(satirlar[i], self._sema)
             if vkn and alanlar:
-                kurallar = kural_ekle(kurallar, vkn, alanlar)
+                kurallar = kural_ekle(kurallar, vkn, alanlar, self._sema)
                 eklenen += 1
         if eklenen:
             try:
