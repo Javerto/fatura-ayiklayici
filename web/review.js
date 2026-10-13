@@ -103,8 +103,10 @@ function rvSatirSec(i) {
   const hatali = new Set(s.uyarilar.map(u => u[0]));
   const etiket = Object.fromEntries(R.alanlar.map(a => [a[0], a[1]]));
   const gruplanan = new Set(RV_GRUP.flatMap(g => g[1]));
-  const gruplar = RV_GRUP.concat(
-    [["Diğer", R.alanlar.map(a => a[0]).filter(a => !gruplanan.has(a))]]);
+  // Grup sabit, grup İÇİ sıra şemanın sırası: editörde sıra değişince form da değişsin.
+  const sirali = R.alanlar.map(a => a[0]);
+  const gruplar = RV_GRUP.map(([b, g]) => [b, sirali.filter(a => g.includes(a))]).concat(
+    [["Diğer", sirali.filter(a => !gruplanan.has(a))]]);
 
   $("rvForm").innerHTML = gruplar.filter(([, alanlar]) => alanlar.length).map(
     ([baslik, alanlar]) => `<div class="grp"><span class="lbl">${baslik}</span>

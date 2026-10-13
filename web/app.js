@@ -149,6 +149,7 @@ function bitti(o) {
   $("stNe").textContent = o.hata ? "Excel Kaydedilemedi" : "Tamamlandı";
   $("stEta").textContent = "—";
   $("btnBasla").disabled = false;
+  $("btnAlanlar").disabled = false;
   $("btnDurdur").disabled = true;
   $("btnExcel").disabled = !o.cikti;
   $("btnRetry").disabled = !o.atlanan;
@@ -315,6 +316,7 @@ async function basla(retry) {
   $("stNe").textContent = "Hazırlanıyor…";
   $("stEta").textContent = "—";
   $("btnDurdur").disabled = false;
+  $("btnAlanlar").disabled = true;      // koşu sürerken şema kilitli
   $("btnUyari").disabled = true;
   $("btnExcel").disabled = true;
   durumTazele();
@@ -355,6 +357,7 @@ async function acilis() {
   };
 
   reviewKur();
+  editorKur();
   if (d.klasor) klasorGoster(d.klasor);       // son kullanılan klasör
   if (!d.api_key_var) setTimeout(apiKeyModal, 400);
 }

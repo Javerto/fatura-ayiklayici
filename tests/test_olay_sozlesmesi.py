@@ -90,6 +90,19 @@ def test_bitti_olayinin_anahtarlari(tmp_path):
     assert {"ok", "yazilan", "cikti"} <= set(sonuc)
 
 
+def test_sema_editoru_anahtarlari(tmp_path):
+    """web/editor.js `editorAc` ve alan formu bu anahtarları okuyor; Kaydet
+    aynı alan anahtarlarını `sema_kaydet`'e geri gönderiyor."""
+    o = Api(kok=tmp_path).sema_oku()
+    assert set(o) == {"alanlar", "tipler", "dosya_hatasi"}
+    assert set(o["alanlar"][0]) == {"anahtar", "etiket", "tip", "aciklama",
+                                    "cekirdek", "aktif", "zorunlu", "ogrenilir"}
+    # editor.js'teki ED_TIP her tipi tanımalı, yoksa seçim kutusunda eksik kalır
+    js = pathlib.Path("web/editor.js").read_text("utf-8")
+    for tip in o["tipler"]:
+        assert re.search(rf"\b{tip}:", js), tip
+
+
 def test_main_pencereyi_genel_nitelige_atamaz():
     """`api.pencere = ...` uygulamayı açılışta dondurur (pywebview API
     nesnesinin genel niteliklerine özyineleyerek girer). test_api.py bunu

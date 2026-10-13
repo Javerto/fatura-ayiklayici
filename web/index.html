@@ -17,6 +17,7 @@
     </div>
     <div class="sp"></div>
     <button class="ico-btn" id="btnKey" title="API anahtarı">🔑</button>
+    <button class="ico-btn" id="btnAlanlar" title="Alanlar">☰</button>
     <button class="ico-btn" id="btnGecmis" title="Geçmiş">🕐</button>
     <div class="tema-wrap" id="temaWrap">
       <button class="ico-btn" id="btnTema" title="Tema">◐</button>
@@ -159,8 +160,49 @@
   </div>
 </div>
 
+<!-- ═══ ALAN (ŞEMA) EDİTÖRÜ ═══ -->
+<div class="rv" id="editor" hidden>
+  <div class="top">
+    <div style="min-width:0">
+      <h1>Alanlar</h1>
+      <div class="sub">Faturadan hangi bilgilerin çıkarılacağı · Kaydet'e basana kadar hiçbir değişiklik geçerli olmaz</div>
+      <div class="sub ed-dosya" id="edDosyaHata" hidden></div>
+    </div>
+  </div>
+
+  <div class="cols ed-cols">
+    <div class="col">
+      <div class="col-head">
+        <span class="lbl" id="edSayi">0 alan</span>
+        <div class="sp"></div>
+        <button class="btn-ghost" id="edEkle" style="padding:4px 9px;font-size:11px">+ Alan ekle</button>
+      </div>
+      <div class="list" id="edListe"></div>
+    </div>
+
+    <div class="col">
+      <div class="col-head">
+        <span class="lbl">Alan ayrıntısı</span>
+        <div class="sp"></div>
+        <button class="zbtn" id="edYukari" title="Yukarı taşı">▲</button>
+        <button class="zbtn" id="edAsagi" title="Aşağı taşı">▼</button>
+      </div>
+      <!-- #9 "Dene" butonu bu kolonun altına (edForm'dan sonra) gelecek -->
+      <div class="rvform" id="edForm"></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <span class="ed-durum" id="edDurum"></span>
+    <div class="sp"></div>
+    <button class="btn-sec" id="edKapat">Vazgeç</button>
+    <button class="btn-primary" id="edKaydet">Kaydet</button>
+  </div>
+</div>
+
 <script src="tema.js"></script>
 <script src="app.js"></script>
 <script src="review.js"></script>
+<script src="editor.js"></script>
 </body>
 </html>
