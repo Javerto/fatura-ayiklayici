@@ -78,7 +78,8 @@ def test_elle_eklenen_alan_anahtar_ve_sona_sutun_alir_ve_kalici_olur(tmp_path):
 
     # Bir sonraki elle ekleme bir sonraki sütunu alır; öncekininki değişmez.
     ham = _ham(yol)
-    ham["alanlar"].insert(0, {"etiket": "Sipariş No", "tip": "tarih"})
+    # Etiket farklı (aynı etiket yasak), slug aynı → sona sayı eklenir.
+    ham["alanlar"].insert(0, {"etiket": "Sipariş-No", "tip": "tarih"})
     _yaz(yol, ham)
     s = sema.oku(yol)
     assert s.sutun["siparis_no"] == 17

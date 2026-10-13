@@ -206,6 +206,78 @@ class Api:
             return True
         return False
 
+    # ── Şema editörü ─────────────────────────────────────────────────
+
+    def sema_oku(self) -> dict:
+        """Editörün açılış verisi: dosyadaki şema, sütun numaraları hariç.
+
+        `anahtar` yalnızca kimlik olarak gider (kaydederken alanı eşlemek
+        için); arayüz onu göstermez.
+        """
+        if self._calisiyor:
+            return {"hata": "Bir işlem sürerken alanlar düzenlenemez."}
+        s, hata = sema.oku_ayrintili(self._alanlar)
+        return {"alanlar": [
+                    {k: a[k] for k in ("anahtar", "etiket", "tip", "aciklama",
+                                       "cekirdek", "aktif", "zorunlu", "ogrenilir")}
+                    for a in s.json()["alanlar"]],
+                "tipler": list(sema.TIPLER),
+                "dosya_hatasi": hata}
+
+    def sema_kaydet(self, alanlar: list) -> dict:
+        """Editördeki alan listesini (sırasıyla) `alanlar.json`'a yazar.
+
+        Çalışan koşunun şeması (`self._sema`) değişmez; yeni şema bir sonraki
+        `basla()`'da okunur. Kayıt kilidi `basla` ile ortak: kontrol ile yazma
+        arasında bir koşu başlamasın.
+        """
+        with self._baslatma_kilidi:
+            if self._calisiyor:
+                return {"hata": "Bir işlem sürerken alanlar kaydedilemez."}
+            try:
+                s = sema.coz({"surum": sema.SURUM,
+                              "alanlar": self._editor_alanlari(alanlar)})
+                sema.yaz(self._alanlar, s)
+            except (ValueError, OSError) as e:
+                return {"hata": f"Kaydedilemedi: {e}"}
+        return {"ok": True}
+
+    def _editor_alanlari(self, alanlar) -> list[dict]:
+        """Editörden gelen listeyi mevcut dosyayla birleştirip ham şemaya çevirir.
+
+        JS bir güven sınırı: sütun, çekirdek ve genişlik hiçbir zaman arayüzden
+        alınmaz; mevcut alanın tipi değiştirilemez (aynı Excel sütununda metin
+        ve sayı karışır); mevcut bir alan listeden düşemez (silmek = pasife
+        almak — düşen alanın sütunu yeni bir alana verilebilirdi).
+        """
+        if not isinstance(alanlar, list):
+            raise ValueError("alan listesi bekleniyordu")
+        mevcut = {a["anahtar"]: a for a in
+                  sema.oku(self._alanlar).json()["alanlar"]}
+        ham, gorulen = [], set()
+        for d in alanlar:
+            if not isinstance(d, dict):
+                raise ValueError("geçersiz alan")
+            anahtar = d.get("anahtar")
+            if anahtar:
+                if anahtar not in mevcut or anahtar in gorulen:
+                    raise ValueError("bilinmeyen ya da yinelenen alan")
+                gorulen.add(anahtar)
+                a = dict(mevcut[anahtar])
+                if d.get("tip", a["tip"]) != a["tip"]:
+                    raise ValueError(f"“{a['etiket']}” alanının tipi değiştirilemez")
+            else:                       # yeni alan: anahtar ve sütunu coz atar
+                a = {"tip": d.get("tip")}
+            a.update(etiket=d.get("etiket"), aciklama=str(d.get("aciklama") or ""),
+                     aktif=bool(d.get("aktif", True)),
+                     zorunlu=bool(d.get("zorunlu", False)),
+                     ogrenilir=bool(d.get("ogrenilir", False)))
+            ham.append(a)
+        eksik = set(mevcut) - gorulen
+        if eksik:
+            raise ValueError("listeden alan eksik (kaldırmak için pasife alın)")
+        return ham
+
     # ── Gözden geçirme ekranı ────────────────────────────────────────
 
     def _satir(self, i):

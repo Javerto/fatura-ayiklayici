@@ -186,7 +186,11 @@ def coz(ham) -> Sema:
             raise ValueError(f"çekirdek alan pasife alınamaz: {anahtar}")
         etiket = d.get("etiket")
         if not isinstance(etiket, str) or not etiket.strip():
-            raise ValueError("boş etiket")
+            raise ValueError("etiketi boş bir alan var")
+        # Etiket = Excel başlığı; iki aynı başlık arşiv okumasının başlık
+        # eşleme kademesini bozar. Büyük/küçük harf ve boşluk farkı sayılmaz.
+        if etiket.strip().casefold() in {g["etiket"].strip().casefold() for g in girdiler}:
+            raise ValueError(f"“{etiket.strip()}” etiketi birden fazla alanda kullanılmış")
         if d.get("tip") not in TIPLER:
             raise ValueError(f"bilinmeyen tip: {d.get('tip')!r}")
         sutun = d.get("sutun")
@@ -254,7 +258,12 @@ def _yazmayi_dene(yol, s: Sema):
 
 
 def oku(yol) -> Sema:
-    """Şemayı dosyadan okur; dosya yoksa tohumdan yazar. Hiç çökmez.
+    """Şemayı dosyadan okur; dosya yoksa tohumdan yazar. Hiç çökmez."""
+    return oku_ayrintili(yol)[0]
+
+
+def oku_ayrintili(yol) -> tuple[Sema, str | None]:
+    """`oku` + dosya bozuksa sebebi (editör kullanıcıya gösterir).
 
     Bozuk/tanınmayan dosyada tohumla devam edilir ve dosyaya **dokunulmaz**:
     içinde kullanıcının elle yazdığı tanımlar olabilir. Onarım gerektiyse
@@ -265,14 +274,13 @@ def oku(yol) -> Sema:
             ham = json.load(f)
     except FileNotFoundError:
         _yazmayi_dene(yol, VARSAYILAN)
-        return VARSAYILAN
-    except (OSError, ValueError):
-        return VARSAYILAN
+        return VARSAYILAN, None
+    except (OSError, ValueError) as e:
+        return VARSAYILAN, f"dosya okunamadı ({e})"
     try:
         s = coz(ham)
-    except (ValueError, TypeError, AttributeError):
-        # ponytail: hata sessiz; editör (#8) gelince kullanıcıya gösterilmeli
-        return VARSAYILAN
+    except (ValueError, TypeError, AttributeError) as e:
+        return VARSAYILAN, str(e)
     if s.json() != ham:
         _yazmayi_dene(yol, s)
-    return s
+    return s, None
