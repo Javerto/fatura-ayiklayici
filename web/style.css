@@ -365,5 +365,6 @@ tbody tr:hover{background:var(--card)}
 .learn+.learn{margin-top:10px}
 .ed-alt{margin-top:18px;display:flex;flex-direction:column;align-items:flex-start;gap:2px}
 .ed-durum{font-size:12px;color:var(--dim)}
+.ed-uyari{color:var(--warn);font-size:11.5px;margin-top:3px}
 .ed-durum.warn{color:var(--warn)}
 .ed-durum.err{color:var(--err)}

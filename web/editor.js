@@ -224,6 +224,51 @@ async function edVazgec() {
   edKapat();
 }
 
+// ═══ DENE ═══
+/* Tek faturayı KAYITLI alanlarla okur (Python `dene`); Excel'e ve geçmişe
+   yazmaz. Ekrandaki kaydedilmemiş hâl denenmez: denenen şema, sonraki
+   koşunun kullanacağı şemayla aynı olmalı. */
+async function edDene() {
+  if (E.degisti && !await onayModal("Kaydedilmemiş değişiklikler",
+      "Deneme kayıtlı alanlarla yapılır; ekrandaki kaydedilmemiş değişiklikler denemeye katılmaz.\n" +
+      "Yeni hâlini denemek için önce Kaydet'e basıp Alanlar'ı yeniden açın.",
+      "Kayıtlı hâliyle dene")) return;
+  const yol = await pywebview.api.dene_sec();
+  if (!yol) return;
+  const ad = yol.split(/[\\/]/).pop();
+  $("edDene").disabled = true;
+  const bekle = modal(`
+    <h2>Deneniyor…</h2>
+    <div class="aciklama">${kacar(ad)} kayıtlı alanlarla okunuyor. Bu birkaç saniye, sunucu yoğunsa birkaç dakika sürebilir. Excel'e hiçbir şey yazılmaz.</div>
+    <div class="alt"><button class="btn-sec" id="dDurdur">Durdur</button></div>`);
+  bekle.querySelector("#dDurdur").onclick = () => pywebview.api.durdur();
+  let o;
+  try {
+    o = await pywebview.api.dene(yol);
+  } finally {
+    bekle.remove();
+    $("edDene").disabled = false;
+  }
+  if (o.hata === "api_key") { apiKeyModal(); return; }
+  if (o.hata) { await bilgiModal("Deneme yapılamadı", o.hata); return; }
+
+  const uyari = {};
+  for (const [alan, mesaj] of o.uyarilar) (uyari[alan] ||= []).push(mesaj);
+  modal(`
+    <h2>Deneme sonucu</h2>
+    <div class="aciklama">${kacar(ad)} · ${kacar(o.kaynak || "")} · Excel'e hiçbir şey yazılmadı.
+Yanlış okunan alanın açıklamasını düzeltip kaydedin, sonra yeniden deneyin.</div>
+    <div class="icerik"><table><thead><tr><th>Alan</th><th>Okunan değer</th></tr></thead><tbody>
+      ${o.alanlar.map(([anahtar, etiket, deger]) => `<tr>
+        <td>${kacar(etiket)}</td>
+        <td>${deger ? kacar(deger) : '<span class="ipucu">(boş)</span>'}
+          ${(uyari[anahtar] || []).map(m => `<div class="ed-uyari">⚠ ${kacar(m)}</div>`).join("")}</td>
+      </tr>`).join("")}
+    </tbody></table></div>
+    <div class="alt"><button class="btn-primary" onclick="this.closest('.perde').remove()">Kapat</button></div>
+  `, true);
+}
+
 // ═══ BAĞLAMA ═══
 function editorKur() {
   $("btnAlanlar").onclick = editorAc;
@@ -255,5 +300,6 @@ function editorKur() {
   $("edYukari").onclick = () => edTasi(-1);
   $("edAsagi").onclick = () => edTasi(1);
   $("edKaydet").onclick = edKaydet;
+  $("edDene").onclick = edDene;
   $("edKapat").onclick = edVazgec;
 }

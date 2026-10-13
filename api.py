@@ -22,11 +22,13 @@ import webview
 from dotenv import load_dotenv, set_key
 
 import fatura
+import gemini
 import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
-from extraction import veri_dogrula
-from hatalar import ExcelHatasi
+from extraction import pdf_den_veri_cek, veri_dogrula
+from hatalar import (APIKeyHatasi, ExcelHatasi, InternetHatasi, ModelHatasi,
+                     PDFHatasi)
 from review import (form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
 from worker import is_listesi, worker
@@ -90,6 +92,7 @@ class Api:
         self._baslangic = 0.0
         self._review = None            # onay bekleyen worker çıktısı
         self._calisiyor = False        # bir worker sürüyor mu
+        self._deneniyor = False        # editörde bir "Dene" sürüyor mu
         self._baslatma_kilidi = threading.Lock()   # `basla` kontrol-ve-ata
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
@@ -152,7 +155,7 @@ class Api:
         # bayrağı thread başlatıldıktan sonra set etmek iki çağrının da
         # guard'ı geçmesine izin veriyordu.
         with self._baslatma_kilidi:
-            if self._calisiyor:
+            if self._calisiyor or self._deneniyor:
                 return {"hata": "Zaten bir işlem sürüyor."}
             api_key = os.environ.get("GEMINI_API_KEY", "").strip()
             if not api_key:
@@ -241,6 +244,65 @@ class Api:
             except (ValueError, OSError) as e:
                 return {"hata": f"Kaydedilemedi: {e}"}
         return {"ok": True}
+
+    def dene_sec(self) -> str:
+        """Denenecek PDF'i seçtirir (son klasörden başlar); vazgeçilirse boş."""
+        secim = self._pencere.create_file_dialog(
+            webview.FileDialog.OPEN, directory=self._klasor or "",
+            file_types=("PDF faturalar (*.pdf)",))
+        if not secim:
+            return ""
+        return secim[0] if isinstance(secim, (list, tuple)) else secim
+
+    def dene(self, yol: str) -> dict:
+        """Tek bir PDF'i KAYITLI şemayla modele gönderip çıkan alanları döndürür.
+
+        Excel'e ve geçmişe hiçbir şey yazılmaz. Worker kullanılmıyor: o eşi
+        olan XML'i modelsiz okur (açıklama denenmemiş olur) ve arşivi okur
+        (bozuk bir Excel denemeyi engellerdi). Öğrenilen firma kuralları da
+        uygulanmaz — kullanıcı açıklamasının modelden ne çıkardığını görmeli.
+        """
+        # JS bir güven sınırı: yol arayüzden gelir.
+        if not (isinstance(yol, str) and yol.lower().endswith(".pdf")
+                and os.path.isfile(yol)):
+            return {"hata": "Denemek için bir PDF fatura seçin."}
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return {"hata": "api_key"}
+        # Kilit `basla` ile ortak: deneme ile koşu aynı kotayı harcar ve aynı
+        # `_stop_event`'i paylaşır (Durdur ve pencere kapanışı ikisini de keser).
+        with self._baslatma_kilidi:
+            if self._calisiyor or self._deneniyor:
+                return {"hata": "Zaten bir işlem ya da deneme sürüyor."}
+            self._deneniyor = True
+            self._stop_event.clear()
+        try:
+            return self._dene(yol, api_key)
+        finally:
+            self._deneniyor = False
+
+    def _dene(self, yol: str, api_key: str) -> dict:
+        s = sema.oku(self._alanlar)
+        try:
+            # `olustur` süreç ömürlü sınırlayıcıyı kullanır: kota anahtara ait.
+            istemci = gemini.olustur(api_key, iptal=self._stop_event)
+            satir = pdf_den_veri_cek(yol, istemci,
+                                     float(os.environ.get("KALITE", "1.5")), sema=s)
+        except (APIKeyHatasi, PDFHatasi) as e:
+            return {"hata": str(e)}
+        except InternetHatasi as e:
+            return {"hata": "Deneme durduruldu." if self._stop_event.is_set()
+                    else str(e)}
+        except ModelHatasi:
+            return {"hata": "Model okunabilir bir yanıt vermedi. Tekrar deneyin; "
+                            "sürerse alan açıklamalarını sadeleştirin."}
+        except Exception as e:
+            return {"hata": f"Beklenmedik hata — {type(e).__name__}: {e}"}
+        degerler = satir_form_degerleri(satir, s)
+        return {"dosya": fatura.dosya_adi(satir),
+                "kaynak": fatura.kaynak(satir),
+                "alanlar": [[a, e, degerler[a]] for a, e, _ in s.duzenlenebilir],
+                "uyarilar": veri_dogrula(satir, sema=s)}
 
     def _editor_alanlari(self, alanlar) -> list[dict]:
         """Editörden gelen listeyi mevcut dosyayla birleştirip ham şemaya çevirir.
