@@ -17,6 +17,7 @@ async function editorAc() {
   const o = await pywebview.api.sema_oku();
   if (o.hata) { await bilgiModal("Alanlar düzenlenemez", o.hata); return; }
   E.alanlar = o.alanlar;
+  E.sistem = new Set(o.sistem_basliklar.map(b => b.toLowerCase()));
   E.secili = 0;
   E.degisti = false;
   const h = $("edDosyaHata");
@@ -50,6 +51,7 @@ function edDenetle() {
     const k = a.etiket.trim().toLowerCase();
     if (!k) ekle(i, "err", "Etiket boş olamaz.", "etiket");
     else if (say[k] > 1) ekle(i, "err", "Bu etiket başka bir alanda da kullanılıyor; Excel'de iki aynı başlık olamaz.", "etiket");
+    else if (E.sistem.has(k)) ekle(i, "err", "Bu başlık programın kendi sütunlarından birine ait; başka bir etiket seçin.", "etiket");
     if (a.aktif && !a.aciklama.trim())
       ekle(i, "warn", "Açıklama boş — model yalnızca etiketi görecek.", "aciklama");
   });

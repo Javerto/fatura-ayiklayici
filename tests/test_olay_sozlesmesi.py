@@ -94,7 +94,7 @@ def test_sema_editoru_anahtarlari(tmp_path):
     """web/editor.js `editorAc` ve alan formu bu anahtarları okuyor; Kaydet
     aynı alan anahtarlarını `sema_kaydet`'e geri gönderiyor."""
     o = Api(kok=tmp_path).sema_oku()
-    assert set(o) == {"alanlar", "tipler", "dosya_hatasi"}
+    assert set(o) == {"alanlar", "tipler", "dosya_hatasi", "sistem_basliklar"}
     assert set(o["alanlar"][0]) == {"anahtar", "etiket", "tip", "aciklama",
                                     "cekirdek", "aktif", "zorunlu", "ogrenilir"}
     # editor.js'teki ED_TIP her tipi tanımalı, yoksa seçim kutusunda eksik kalır

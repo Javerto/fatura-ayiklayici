@@ -225,6 +225,7 @@ class Api:
                                        "cekirdek", "aktif", "zorunlu", "ogrenilir")}
                     for a in s.json()["alanlar"]],
                 "tipler": list(sema.TIPLER),
+                "sistem_basliklar": [a.baslik for a in sema.SISTEM_ALANLARI if a.baslik],
                 "dosya_hatasi": hata}
 
     def sema_kaydet(self, alanlar: list) -> dict:

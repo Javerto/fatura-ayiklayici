@@ -170,6 +170,11 @@ def coz(ham) -> Sema:
         raise ValueError("şema biçimi tanınmadı")
     tohum = {d["anahtar"]: d for d in TOHUM["alanlar"]}
     ayrilmis = {a.sutun for a in SISTEM_ALANLARI} | {d["sutun"] for d in tohum.values()}
+    # Kod sahibi sütunlar (formül, dosya, gizli yol, kaynak): anahtarları ve
+    # başlıkları bir veri alanına verilemez — `_Sema`ya çift yazılır, başlık
+    # eşleme kademesi yanlış sütunu okur, `_teknik_bilgi` kaybolur.
+    sistem_anahtar = {a.anahtar for a in SISTEM_ALANLARI}
+    sistem_baslik = {a.baslik.casefold() for a in SISTEM_ALANLARI if a.baslik}
 
     girdiler = []
     for d in ham["alanlar"]:
@@ -191,6 +196,8 @@ def coz(ham) -> Sema:
         # eşleme kademesini bozar. Büyük/küçük harf ve boşluk farkı sayılmaz.
         if etiket.strip().casefold() in {g["etiket"].strip().casefold() for g in girdiler}:
             raise ValueError(f"“{etiket.strip()}” etiketi birden fazla alanda kullanılmış")
+        if etiket.strip().casefold() in sistem_baslik:
+            raise ValueError(f"“{etiket.strip()}” bir sistem sütununun başlığı; başka bir etiket seçin")
         if d.get("tip") not in TIPLER:
             raise ValueError(f"bilinmeyen tip: {d.get('tip')!r}")
         sutun = d.get("sutun")
@@ -202,9 +209,10 @@ def coz(ham) -> Sema:
     # Anahtarlar önce dosyada yazılı olanlar arasından, sonra eksikler türetilir:
     # türetilen bir anahtar asla dosyadaki bir anahtarı gölgelememeli.
     yazili = [d["anahtar"] for d in girdiler if d.get("anahtar")]
-    if len(yazili) != len(set(yazili)) or not all(isinstance(k, str) for k in yazili):
+    if (len(yazili) != len(set(yazili)) or not all(isinstance(k, str) for k in yazili)
+            or sistem_anahtar & set(yazili)):
         raise ValueError("yinelenen/geçersiz anahtar")
-    kullanilan = set(tohum) | set(yazili)
+    kullanilan = set(tohum) | set(yazili) | sistem_anahtar
     for d in girdiler:
         if not d.get("anahtar"):
             d["anahtar"] = _slug(d["etiket"], kullanilan)
