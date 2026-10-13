@@ -9,14 +9,13 @@ from openpyxl.utils import get_column_letter
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 
 from hatalar import ExcelHatasi
-from fatura import ALANLAR, SUTUN
+import sema as _sema
+# Gömülü şemasız eski dosyaların düzeni tohumunkidir (kademe 2/3); yazılan ve
+# okunan alan listesi ise verilen şemadan gelir.
+from fatura import ALANLAR as TOHUM_ALANLARI, SUTUN as TOHUM_SUTUN
 from fatura import kaynak as fatura_kaynak   # yerel `kaynak` adlarıyla çakışmasın
 from ozet import ozet_hesapla
 
-# Başlık ve genişlikler sütun sırasına göre: tablo fatura.ALANLAR'da.
-SUTUN_BILGISI = sorted((a for a in ALANLAR if a.baslik), key=lambda a: a.sutun)
-# Satırdan doğrudan yazılan/okunan alanlar (formül ve dosya sütunları hariç).
-VERI_ALANLARI = [a for a in ALANLAR if a.etiket]
 # Gizli sayfa: dosyanın hangi düzenle yazıldığını (anahtar → sütun) taşır, böylece
 # okuma koddaki sütun numaralarına değil dosyanın kendisine güvenir.
 SEMA_SAYFASI = "_Sema"
@@ -60,8 +59,13 @@ def url_dosya(url: str) -> str:
         return url.replace("file:///", "").replace("/", "\\")
 
 
-def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
-    """Mevcut Excel'deki faturaları ve işlenmiş dosya adlarını okur."""
+def mevcut_verileri_oku(cikti: str, sema=None) -> tuple[list[dict], set[str]]:
+    """Mevcut Excel'deki faturaları ve işlenmiş dosya adlarını okur.
+
+    Okunan alanlar `sema`nınkilerdir (pasifler dahil — sütunları korunur);
+    dosyada olmayan alan None gelir.
+    """
+    veri_alanlari = (sema or _sema.VARSAYILAN).alanlar
     if not os.path.exists(cikti):
         return [], set()
     try:
@@ -93,7 +97,7 @@ def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
         if not b_val or str(b_val).strip().upper() == "TOPLAM":
             continue
         kaynak_val = deger("kaynak")
-        s = {a.anahtar: deger(a.anahtar) for a in VERI_ALANLARI}
+        s = {a.anahtar: deger(a.anahtar) for a in veri_alanlari}
         s["_teknik_bilgi"] = str(kaynak_val).strip() if kaynak_val else ""
         n_cell = hucre("dosya")
         dosya_yolu = ""
@@ -136,16 +140,25 @@ def _sutun_haritasi(wb, ws) -> dict[str, int]:
             return harita
         # ponytail: bozuk/boş şema sayfası → alt kademelere düş, hata verme
 
-    baslik_anahtar = {a.baslik: a.anahtar for a in ALANLAR if a.baslik}
+    # Başlıklar tohumunkiler: kullanıcı etiketi değiştirse de eski dosya tanınır.
+    baslik_anahtar = {a.baslik: a.anahtar for a in TOHUM_ALANLARI if a.baslik}
     basliklar = {baslik_anahtar[str(c.value).strip()]: c.column
                  for c in ws[1] if c.value and str(c.value).strip() in baslik_anahtar}
     if "fatura_no" in basliklar:
-        return {**SUTUN, **basliklar}
-    return dict(SUTUN)
+        return {**TOHUM_SUTUN, **basliklar}
+    return dict(TOHUM_SUTUN)
 
 
-def excel_olustur(satirlar: list, cikti: str):
-    """Fatura listesinden biçimlendirilmiş Excel dosyası oluşturur."""
+def excel_olustur(satirlar: list, cikti: str, sema=None):
+    """Fatura listesinden biçimlendirilmiş Excel dosyası oluşturur.
+
+    Sütunlar, başlıklar ve genişlikler `sema`dan gelir (verilmezse varsayılan).
+    """
+    sema = sema or _sema.VARSAYILAN
+    SUTUN = sema.sutun
+    sutun_bilgisi = sorted((a for a in sema.tum_alanlar if a.baslik),
+                           key=lambda a: a.sutun)
+    tarih_sutunlari = {a.sutun for a in sema.alanlar if a.tip == "tarih"}
     wb = Workbook()
     ws = wb.active
     ws.title = "Faturalar"
@@ -162,7 +175,7 @@ def excel_olustur(satirlar: list, cikti: str):
     zebra_fill  = PatternFill("solid", start_color="EEF2F9")
     toplam_fill = PatternFill("solid", start_color="D9E1F2")
 
-    for a in SUTUN_BILGISI:
+    for a in sutun_bilgisi:
         c = ws.cell(row=1, column=a.sutun, value=a.baslik)
         c.font, c.fill, c.alignment, c.border = baslik_font, baslik_fill, orta, kenar
     ws.row_dimensions[1].height = 30
@@ -180,14 +193,14 @@ def excel_olustur(satirlar: list, cikti: str):
         ws.cell(row=ri, column=SUTUN["ft_formul"],
                 value=f"=+{fn_hrf}{ri}&{ft_hrf}{ri}")
 
-        veri_map = {a.sutun: s.get(a.anahtar, _bos(a)) for a in VERI_ALANLARI}
+        veri_map = {a.sutun: s.get(a.anahtar, _bos(a)) for a in sema.alanlar}
         for col, val in veri_map.items():
             c = ws.cell(row=ri, column=col, value=excel_guvenli(val))
             c.font, c.border = f10, kenar
             c.alignment = Alignment(vertical="center")
             if col in (SUTUN["vergiler_dahil_tutar"], SUTUN["kdv_haric_tutar"]) and isinstance(val, (int, float)):
                 c.number_format = num_fmt
-            if col == SUTUN["fatura_tarihi"] and hasattr(val, "strftime"):
+            if col in tarih_sutunlari and hasattr(val, "strftime"):
                 c.number_format = "DD.MM.YYYY"
             if zebra:
                 c.fill = zebra
@@ -232,7 +245,7 @@ def excel_olustur(satirlar: list, cikti: str):
         if zebra:
             kc.fill = zebra
 
-    for a in SUTUN_BILGISI:
+    for a in sutun_bilgisi:
         ws.column_dimensions[get_column_letter(a.sutun)].width = a.genislik
     ws.column_dimensions[gizli_harf].hidden = True
 
@@ -248,22 +261,24 @@ def excel_olustur(satirlar: list, cikti: str):
         c.font = fbold
         if col in (SUTUN["vergiler_dahil_tutar"], SUTUN["kdv_haric_tutar"], SUTUN["vergi_tutari"]):
             c.number_format = num_fmt
-    for col in range(1, 15):
+    for col in range(1, max(SUTUN.values()) + 1):
+        if col == SUTUN["dosya_yolu_gizli"]:
+            continue
         c = ws.cell(row=sr, column=col)
         c.border, c.fill = kenar, toplam_fill
-    tc = ws.cell(row=sr, column=SUTUN["kaynak"])
-    tc.border, tc.fill = kenar, toplam_fill
 
     _ozet_sayfasi_yaz(wb, satirlar)
-    _sema_sayfasi_yaz(wb)
+    _sema_sayfasi_yaz(wb, sema)
 
     _guvenli_kaydet(wb, cikti)
 
 
-def _sema_sayfasi_yaz(wb):
+def _sema_sayfasi_yaz(wb, sema):
+    # Pasif alanlar da yazılır: yazılmazsa kademe 1 onları None okur ve
+    # arşivdeki verileri bir sonraki onayda düşer.
     ws = wb.create_sheet(SEMA_SAYFASI)
     ws.append(["anahtar", "sutun"])
-    for a in sorted(ALANLAR, key=lambda a: a.sutun):
+    for a in sorted(sema.tum_alanlar, key=lambda a: a.sutun):
         ws.append([a.anahtar, a.sutun])
     ws.sheet_state = "hidden"
 

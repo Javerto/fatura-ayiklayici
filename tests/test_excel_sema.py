@@ -110,3 +110,65 @@ def test_ne_sema_ne_baslik_olan_eski_dosya_sabit_sutunlardan_okunur(tmp_path):
     assert satirlar[0]["vergiler_dahil_tutar"] == 1180.0
     assert satirlar[0]["_teknik_bilgi"] == "OCR"
     assert islenenmis == {"a.pdf"}
+
+
+# ── Kullanıcı şeması (bilet #5) ──────────────────────────────────────────────
+
+def _kullanici_semasi(**degistir):
+    import sema
+    ham = sema.VARSAYILAN.json()
+    for a in ham["alanlar"]:
+        a.update(degistir.get(a["anahtar"], {}))
+    ham["alanlar"].append({"etiket": "Sipariş No", "tip": "metin",
+                           "aciklama": "sipariş numarası", "genislik": 19})
+    ham["alanlar"].append({"etiket": "Vade", "tip": "tarih"})
+    return sema.coz(ham)
+
+
+def test_eklenen_alan_sona_sutun_baslik_genislik_alir_ve_geri_okunur(tmp_path):
+    s = _kullanici_semasi(sirket_adi={"etiket": "Satıcı Firma"})
+    yol = str(tmp_path / "f.xlsx")
+    satir = dict(_satir(), siparis_no="SP-77",
+                 vade=datetime.datetime(2024, 2, 15))
+    excel_olustur([satir], yol, sema=s)
+
+    ws = load_workbook(yol)["Faturalar"]
+    assert ws.cell(row=1, column=17).value == "Sipariş No"
+    assert ws.cell(row=2, column=17).value == "SP-77"
+    assert ws.column_dimensions["Q"].width == 19
+    assert ws.cell(row=1, column=18).value == "Vade"
+    assert ws.cell(row=2, column=18).number_format == "DD.MM.YYYY"
+    assert ws.cell(row=1, column=11).value == "Satıcı Firma"
+
+    satirlar, _ = mevcut_verileri_oku(yol, sema=s)
+    assert satirlar[0]["siparis_no"] == "SP-77"
+    assert satirlar[0]["sirket_adi"] == "ACME A.Ş."
+
+
+def test_etiketi_degisen_semayla_eski_basliklar_hala_taninir(tmp_path):
+    """Gömülü şemasız eski dosyanın başlıkları tohumun etiketleridir; kullanıcı
+    "Şirket Adı"nı "Satıcı Firma" yaptı diye o dosya okunamaz hâle gelmemeli."""
+    yol = str(tmp_path / "f.xlsx")
+    excel_olustur([_satir()], yol)
+    _, yeni = _sutunlari_kaydir(yol, {2: 11, 11: 2})      # şema sayfası düşer
+    yeni.save(yol)
+
+    s = _kullanici_semasi(sirket_adi={"etiket": "Satıcı Firma"})
+    satirlar, _ = mevcut_verileri_oku(yol, sema=s)
+    assert satirlar[0]["sirket_adi"] == "ACME A.Ş."
+    assert satirlar[0]["siparis_no"] is None
+
+
+def test_pasif_alanin_sutunu_ve_verisi_yeniden_yazimda_korunur(tmp_path):
+    """bilet-4 tuzağı: pasif alan gömülü şemaya yazılmazsa kademe 1 onu None
+    okur ve arşiv verisi bir sonraki onayda sessizce düşer."""
+    yol = str(tmp_path / "f.xlsx")
+    excel_olustur([dict(_satir(), sira_no=42.0)], yol)
+
+    pasif = _kullanici_semasi(sira_no={"aktif": False})
+    satirlar, _ = mevcut_verileri_oku(yol, sema=pasif)
+    excel_olustur(satirlar, yol, sema=pasif)
+
+    satirlar, _ = mevcut_verileri_oku(yol, sema=pasif)
+    assert satirlar[0]["sira_no"] == 42
+    assert load_workbook(yol)["Faturalar"].cell(row=2, column=4).value == 42
