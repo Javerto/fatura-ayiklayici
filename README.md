@@ -67,11 +67,8 @@ build.bat
 
 ## ⚙️ Özelleştirme
 
-### Prompt Güncelleme
-Uygulamanın faturalardan hangi alanları çıkaracağını değiştirmek için `extraction.py` içindeki `PROMPT_SABLON` değişkenini düzenleyin.
-
-### Yeni Alan Ekleme
-Fatura satırının şeması `fatura.py` içindeki `ALANLAR` tablosundadır. Excel sütunu, başlığı, form etiketi ve tipi tek bir satırda tanımlanır; Excel/form/öğrenme listeleri bu tablodan türetilir.
+### Alanlar ve Prompt
+Hangi alanların çıkarılacağı `alanlar.json` dosyasındadır (EXE'de `%APPDATA%\FaturaAyiklayici`, geliştirmede proje kökü; ilk açılışta kendiliğinden oluşur). Yeni alan için listeye `{"etiket": "Sipariş No", "tip": "metin", "aciklama": "..."}` ekleyin — `anahtar` ve `sutun` uygulama tarafından atanır. Model promptu, Excel sütunları ve gözden geçirme formu bu dosyadan türetilir; promptun sabit yönerge başlığı `sema.py` içindeki `PROMPT_BASLIK`'tadır.
 
 ### Model ve Kota Ayarları
 Modelle ilgili her sabit `gemini.py` içindedir: `GEMMA_MODEL`, `MAX_DENEME`, `TIMEOUT_SANIYE`, `RPM_LIMIT`, `THINKING_BUDGET`.
@@ -89,7 +86,8 @@ Modelle ilgili her sabit `gemini.py` içindedir: `GEMMA_MODEL`, `MAX_DENEME`, `T
 | `worker.py` | Arka plan işleme döngüsü (arayüzden bağımsız) |
 | `extraction.py` | PDF/XML'den veri çıkarma ve doğrulama |
 | `gemini.py` | Modele açılan tek kapı: hız sınırlayıcı, yeniden deneme, hata sınıflandırma |
-| `fatura.py` | Fatura satırının şeması (`ALANLAR`) ve türetilmiş değerler |
+| `sema.py` | Şema: `alanlar.json` okuma/yazma, prompt ve tablo türetimi |
+| `fatura.py` | Varsayılan şemanın sabitleri (`ALANLAR`, `SUTUN`) ve türetilmiş değerler |
 | `review.py` | Gözden geçirme ekranının saf mantığı |
 | `duzeltme.py` | VKN bazlı öğrenen düzeltme kuralları |
 | `excel_utils.py` | Excel okuma/yazma, bağlantılar, Özet sayfası |
