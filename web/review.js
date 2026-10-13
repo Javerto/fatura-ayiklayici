@@ -30,6 +30,7 @@ function reviewAc(o) {
   $("rvAlt").textContent = o.kesildi
     ? "İşlem yarıda kesildi — Onaylayana kadar Excel'e hiçbir şey yazılmaz"
     : "Onaylayana kadar Excel'e hiçbir şey yazılmaz";
+  rvSemaFarki(o.sema_farki);
   $("anaEkran").hidden = true;
   $("review").hidden = false;
   document.body.style.overflow = "hidden";
@@ -38,6 +39,20 @@ function reviewAc(o) {
   R.secili = ilkUyarili >= 0 ? ilkUyarili : 0;
   rvListeCiz();
   rvSatirSec(R.secili);
+}
+
+// Koşu düzeyinde uyarı: arşiv başka bir alan setiyle yazılmış. Bir satıra ait
+// değil, o yüzden (alan, mesaj) listesine değil üst şeride yazılır.
+function rvSemaFarki(f) {
+  const el = $("rvSema");
+  el.hidden = !f;
+  if (!f) return;
+  const parcalar = [];
+  if (f.arsivde_fazla.length)
+    parcalar.push(`arşivde olup şemada olmayan ${f.arsivde_fazla.length} sütun (${f.arsivde_fazla.join(", ")})`);
+  if (f.yeni.length)
+    parcalar.push(`eklenecek ${f.yeni.length} yeni sütun (${f.yeni.join(", ")})`);
+  el.textContent = `⚠ Bu Excel farklı bir alan setiyle oluşturulmuş: ${parcalar.join(" · ")}`;
 }
 
 function rvKapat() {

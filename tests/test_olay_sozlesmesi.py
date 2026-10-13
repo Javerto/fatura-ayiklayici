@@ -64,9 +64,21 @@ def test_review_olayinin_anahtarlari(tmp_path):
         "yeni": [{"fatura_no": "GIB2024000000101", "dosya_yolu": r"C:\x\a.pdf"}],
     })
     assert set(olay) == {"t", "satirlar", "alanlar", "mevcut_sayi",
-                         "kesildi", "atlanan"}
+                         "kesildi", "atlanan", "sema_farki"}
     assert set(olay["satirlar"][0]) == {"i", "form", "uyarilar", "dosya",
                                         "pdf", "kaynak"}
+    assert olay["sema_farki"] is None       # yükte yoksa uyarı yok
+
+
+def test_review_olayi_sema_farkini_aktarir(tmp_path):
+    """web/review.js `rvSemaFarki(o.sema_farki)` bu iki listeyi okuyor."""
+    api = Api(kok=tmp_path)
+    fark = {"arsivde_fazla": ["Sipariş No"], "yeni": ["GTİP"]}
+    olay = api._review_olayi({
+        "mevcut": [], "atlanmis": [], "cikti": "x.xlsx", "kesildi": False,
+        "sema_farki": fark, "yeni": [{"fatura_no": "GIB2024000000101"}],
+    })
+    assert olay["sema_farki"] == fark
 
 
 def test_bitti_olayinin_anahtarlari(tmp_path):

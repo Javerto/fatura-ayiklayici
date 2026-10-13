@@ -20,7 +20,7 @@ from extraction import (
 )
 from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
                      ModelHatasi, ExcelHatasi)
-from excel_utils import mevcut_verileri_oku
+from excel_utils import mevcut_verileri_oku, sema_farki
 from duzeltme import kural_uygula
 
 
@@ -160,6 +160,8 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
                 "uyarilar": uyari_listesi,
                 "cikti":    CIKTI,
                 "kesildi":  kesildi,
+                # Koşu düzeyinde: arşiv başka bir alan setiyle yazılmışsa.
+                "sema_farki": sema_farki(CIKTI, sema),
             }))
         else:
             log("info", "Kaydedilecek yeni fatura bulunamadı.")

@@ -464,6 +464,8 @@ class Api:
                 "alanlar": [list(a) for a in self._sema.duzenlenebilir],
                 "mevcut_sayi": len(payload["mevcut"]),
                 "kesildi": payload.get("kesildi", False),
+                # Koşu düzeyinde uyarı; satırların (alan, mesaj) sözleşmesinin dışında.
+                "sema_farki": payload.get("sema_farki"),
                 "atlanan": len(payload["atlanmis"])}
 
     def _kurallari_ogren(self, satirlar: list, hatirla: list,
