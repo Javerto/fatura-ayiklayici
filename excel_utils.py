@@ -149,6 +149,38 @@ def _sutun_haritasi(wb, ws) -> dict[str, int]:
     return dict(TOHUM_SUTUN)
 
 
+def sema_farki(cikti: str, sema=None) -> dict | None:
+    """Arşivin gömülü şeması `sema`dan farklıysa hangi alanların ayrıştığı.
+
+    `{"arsivde_fazla": [başlık...], "yeni": [etiket...]}`; dosya yoksa, gömülü
+    şeması yoksa (eski dosya) ya da şemalar aynıysa None. Koşu düzeyinde bir
+    bilgidir, işlemi durdurmaz — okunamayan dosya da None döner.
+    """
+    sema = sema or _sema.VARSAYILAN
+    if not os.path.exists(cikti):
+        return None
+    try:
+        wb = load_workbook(cikti, read_only=True)
+        try:
+            if SEMA_SAYFASI not in wb.sheetnames:
+                return None
+            gomulu = {str(k): s for k, s in wb[SEMA_SAYFASI].iter_rows(
+                min_row=2, values_only=True) if k}
+            ws = wb["Faturalar"] if "Faturalar" in wb.sheetnames else wb.worksheets[0]
+            basliklar = {i: v for i, v in enumerate(
+                next(ws.iter_rows(max_row=1, values_only=True), ()), 1)}
+        finally:
+            wb.close()
+    except Exception:
+        return None   # ponytail: uyarı bilgi amaçlı; okuma hatasını mevcut_verileri_oku yakalar
+
+    aktif = {a.anahtar: a for a in sema.tum_alanlar}
+    # Arşive özgü alanın etiketi şemada yok; kullanıcı anahtarı değil başlığı tanır.
+    fazla = [str(basliklar.get(s) or k) for k, s in gomulu.items() if k not in aktif]
+    yeni = [a.baslik or a.anahtar for k, a in aktif.items() if k not in gomulu]
+    return {"arsivde_fazla": fazla, "yeni": yeni} if fazla or yeni else None
+
+
 def excel_olustur(satirlar: list, cikti: str, sema=None):
     """Fatura listesinden biçimlendirilmiş Excel dosyası oluşturur.
 
