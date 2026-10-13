@@ -44,3 +44,12 @@ def test_bilinmeyen_alan_sessizce_gecmez():
     """Beklenen JSON'daki yazım hatası, alan doğruymuş gibi görünmemeli."""
     fark = karsilastir({"fatura_nu": "X"}, {"fatura_no": "X"})
     assert fark and fark[0][0] == "fatura_nu"
+
+
+def test_tip_haritasi_verilen_semadan_turer():
+    """Şemaya eklenen alan altın kümede de ölçülebilmeli (tipine göre)."""
+    import sema
+    ham = sema.VARSAYILAN.json()
+    ham["alanlar"].append({"etiket": "Koli Sayısı", "tip": "sayi"})
+    s = sema.coz(ham)
+    assert karsilastir({"koli_sayisi": "1.234"}, {"koli_sayisi": 1234.0}, s) == []

@@ -27,13 +27,15 @@ import sys
 
 from dotenv import load_dotenv
 
-import fatura
+import sema as _sema
 import gemini
 from extraction import (pdf_den_veri_cek, xml_den_veri_cek, tarih_parse,
                         to_float)
 
 VARSAYILAN_KLASOR = "altin"
-ALAN_TIPI = {a.anahtar: a.tip for a in fatura.ALANLAR if a.tip}
+# Uygulamanın kendi şema dosyası (geliştirme modu: proje kökü). Altın küme
+# kullanıcının alan setini ölçer; eklenen alanlar da raporda görünür.
+SEMA_DOSYASI = pathlib.Path(__file__).parent / "alanlar.json"
 
 
 # ─── Karşılaştırma ───────────────────────────────────────────────────────────
@@ -59,14 +61,15 @@ def esit(beklenen, bulunan, tip) -> bool:
     return b == y
 
 
-def karsilastir(beklenen: dict, bulunan: dict) -> list[tuple[str, object, object]]:
+def karsilastir(beklenen: dict, bulunan: dict,
+                sema=None) -> list[tuple[str, object, object]]:
     """Uyuşmayan alanlar: [(alan, beklenen, bulunan), ...]. Boş liste = tam isabet.
 
     Yalnızca beklenen JSON'da geçen alanlara bakılır.
     """
     fark = []
     for alan, bek in beklenen.items():
-        tip = ALAN_TIPI.get(alan)
+        tip = (sema or _sema.VARSAYILAN).tip_haritasi.get(alan)
         if tip is None:                 # tanınmayan anahtar sessizce atlanmaz
             fark.append((alan, bek, "<bilinmeyen alan>"))
             continue
@@ -82,10 +85,10 @@ def _faturalar(klasor: pathlib.Path) -> list[pathlib.Path]:
                   if d.suffix.lower() in (".pdf", ".xml"))
 
 
-def _cikar(dosya: pathlib.Path, istemci) -> dict:
+def _cikar(dosya: pathlib.Path, istemci, sema) -> dict:
     if dosya.suffix.lower() == ".xml":
         return xml_den_veri_cek(str(dosya), None)
-    return pdf_den_veri_cek(str(dosya), istemci)
+    return pdf_den_veri_cek(str(dosya), istemci, sema=sema)
 
 
 def _istemci():
@@ -96,7 +99,7 @@ def _istemci():
     return gemini.olustur(key, bilgi=lambda m: print(m))
 
 
-def olustur(klasor: pathlib.Path):
+def olustur(klasor: pathlib.Path, sema):
     """Beklenen JSON taslaklarını modelden üretir — ELLE DÜZELTİLMELİ.
 
     Altın kümenin değeri insan doğrulamasından gelir; bu yalnızca 15 faturanın
@@ -109,11 +112,11 @@ def olustur(klasor: pathlib.Path):
             print(f"atlandı (var): {hedef.name}")
             continue
         try:
-            veri = _cikar(dosya, istemci)
+            veri = _cikar(dosya, istemci, sema)
         except Exception as e:
             print(f"HATA {dosya.name}: {type(e).__name__}: {e}")
             continue
-        taslak = {a: veri.get(a) for a in ALAN_TIPI if veri.get(a) is not None}
+        taslak = {a: veri.get(a) for a in sema.tip_haritasi if veri.get(a) is not None}
         if hasattr(taslak.get("fatura_tarihi"), "strftime"):
             taslak["fatura_tarihi"] = taslak["fatura_tarihi"].strftime("%d.%m.%Y")
         hedef.write_text(json.dumps(taslak, ensure_ascii=False, indent=2),
@@ -121,7 +124,7 @@ def olustur(klasor: pathlib.Path):
         print(f"yazıldı: {hedef.name}  ← GÖZDEN GEÇİR")
 
 
-def rapor(klasor: pathlib.Path):
+def rapor(klasor: pathlib.Path, sema):
     istemci = _istemci()
     dosyalar = [d for d in _faturalar(klasor) if d.with_suffix(".json").exists()]
     if not dosyalar:
@@ -135,14 +138,14 @@ def rapor(klasor: pathlib.Path):
     for dosya in dosyalar:
         beklenen = json.loads(dosya.with_suffix(".json").read_text(encoding="utf-8"))
         try:
-            bulunan = _cikar(dosya, istemci)
+            bulunan = _cikar(dosya, istemci, sema)
         except Exception as e:
             hatalar.append((dosya.name, "—", f"{type(e).__name__}: {e}", ""))
             for alan in beklenen:
                 toplam[alan] = toplam.get(alan, 0) + 1
             continue
 
-        fark = dict((a, (b, y)) for a, b, y in karsilastir(beklenen, bulunan))
+        fark = dict((a, (b, y)) for a, b, y in karsilastir(beklenen, bulunan, sema))
         for alan in beklenen:
             toplam[alan] = toplam.get(alan, 0) + 1
             if alan not in fark:
@@ -160,7 +163,7 @@ def rapor(klasor: pathlib.Path):
     print(f"Model: {gemini.GEMMA_MODEL}   Fatura: {len(dosyalar)}")
     print(f"{'Alan':<22}{'Doğru':>7}{'Toplam':>8}{'%':>8}")
     print("-" * 45)
-    for alan in ALAN_TIPI:
+    for alan in sema.tip_haritasi:
         if alan in toplam:
             d, t = dogru.get(alan, 0), toplam[alan]
             print(f"{alan:<22}{d:>7}{t:>8}{d / t * 100:>7.1f}")
@@ -191,7 +194,7 @@ def main(argv=None):
     klasor = pathlib.Path(a.klasor)
     if not klasor.is_dir():
         sys.exit(f"Klasör yok: {klasor}")
-    (olustur if a.olustur else rapor)(klasor)
+    (olustur if a.olustur else rapor)(klasor, _sema.oku(SEMA_DOSYASI))
 
 
 if __name__ == "__main__":
