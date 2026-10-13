@@ -142,8 +142,8 @@ def _json_ayikla(cevap: str) -> dict:
     raise ModelHatasi("Modelden geçersiz JSON yanıtı alındı. Dosya atlanıyor.")
 
 
-def veri_dogrula(veri: dict,
-                 baska_nolar: set[str] | None = None) -> list[tuple[str, str]]:
+def veri_dogrula(veri: dict, baska_nolar: set[str] | None = None,
+                 sema=None) -> list[tuple[str, str]]:
     """Fatura verisindeki olası sorunları (alan, mesaj) çiftleri olarak döner.
 
     Dönüş değeri boşsa veri temiz demektir.
@@ -154,7 +154,13 @@ def veri_dogrula(veri: dict,
 
     `baska_nolar`: bu satır dışındaki faturaların normalize fatura no'ları
     (bkz. `fatura.fatura_no_anahtari`). Verilirse mükerrer kayıt uyarılır.
+
+    `sema`: çekirdek alanlar aşağıdaki gömülü kurallarla denetlenir; diğer
+    alanlar yalnızca `zorunlu` bayrağı ve tip dönüşüm hatasıyla. Pasif alan
+    formda olmadığından onun için uyarı üretilmez.
     """
+    sema = sema or _sema.VARSAYILAN
+    aktif = {a.anahtar for a in sema.alanlar if a.aktif}
     uyarilar = []
 
     def ekle(alan, mesaj):
@@ -197,7 +203,8 @@ def veri_dogrula(veri: dict,
         ekle("vergiler_dahil_tutar", f"Vergiler dahil tutar sıfır/negatif: {vdt}")
 
     # tutar tutarlılığı — örtük KDV oranı bilinen oranlardan birine uymalı
-    kht = veri.get("kdv_haric_tutar")
+    # kdv_haric_tutar pasifse oran anlamsız: atla (uyarı çekirdek alana düşerdi).
+    kht = veri.get("kdv_haric_tutar") if "kdv_haric_tutar" in aktif else None
     if (isinstance(vdt, (int, float)) and isinstance(kht, (int, float))
             and vdt > 0 and kht > 0):
         if vdt < kht:
@@ -226,7 +233,21 @@ def veri_dogrula(veri: dict,
     if not str(veri.get("sirket_adi") or "").strip():
         ekle("sirket_adi", "Şirket adı boş")
 
-    return uyarilar
+    # Çekirdek dışı alanlar: yalnızca zorunlu bayrağı ve tip dönüşüm hatası.
+    cevrilemeyen = veri.get("_cevrilemeyen") or {}
+    for a in sema.alanlar:
+        if a.cekirdek or not a.aktif:
+            continue
+        deger = veri.get(a.anahtar)
+        if a.anahtar in cevrilemeyen:
+            ekle(a.anahtar, f"{a.etiket} sayıya çevrilemedi: '{cevrilemeyen[a.anahtar]}'")
+        elif a.tip == "tarih" and isinstance(deger, str) and deger.strip():
+            ekle(a.anahtar, f"{a.etiket} tarih olarak okunamadı: '{deger}'")
+        elif a.zorunlu and (deger is None or not str(deger).strip()):
+            ekle(a.anahtar, f"{a.etiket} boş")
+
+    # Pasif alanın uyarısı gösterilecek yer bulamaz (ör. sira_no kuralı).
+    return [u for u in uyarilar if u[0] in aktif]
 
 
 # ─── VERİ ÇIKARMA ─────────────────────────────────────────────────────────────
@@ -379,7 +400,10 @@ def pdf_den_veri_cek(dosya_yolu: str, istemci, zoom: float = 1.5,
         if tip == "tarih":
             veri[alan] = tarih_parse(str(veri.get(alan, "") or ""))
         elif tip == "sayi":
-            veri[alan] = to_float(veri.get(alan))
+            ham, veri[alan] = veri.get(alan), to_float(veri.get(alan))
+            if veri[alan] is None and str(ham or "").strip():
+                # Sütuna metin yazmayalım (toplamlar bozulur); uyarı için sakla.
+                veri.setdefault("_cevrilemeyen", {})[alan] = str(ham)
     veri["dosya_yolu"] = str(pathlib.Path(dosya_yolu).resolve())
     veri["_teknik_bilgi"] = "Dijital" if is_digital else "OCR"
     return veri

@@ -103,8 +103,12 @@ class Sema:
 
     @property
     def duzenlenebilir(self) -> list[tuple[str, str, str]]:
-        """Form alanları (anahtar, etiket, tip) — sıra formdaki sıradır."""
-        return [(a.anahtar, a.etiket, a.tip) for a in self.alanlar]
+        """Form alanları (anahtar, etiket, tip) — sıra formdaki sıradır.
+
+        Yalnızca aktifler: pasif alan formda görünmez. `review.form_satira_uygula`
+        da bu listeyi gezer, böylece pasifin arşiv değerine dokunmaz.
+        """
+        return [(a.anahtar, a.etiket, a.tip) for a in self.alanlar if a.aktif]
 
     @property
     def ogrenilen(self) -> list[str]:
@@ -175,6 +179,11 @@ def coz(ham) -> Sema:
         anahtar = d.get("anahtar")
         if anahtar in tohum:
             d["sutun"], d["tip"] = tohum[anahtar]["sutun"], tohum[anahtar]["tip"]
+        # Çekirdek kısıtının tek denetim noktası: dosya da editör de buradan
+        # geçer. Onarılmaz, reddedilir — sessizce aktif yapmak kullanıcının
+        # kararını yok saymak olur.
+        if anahtar in CEKIRDEK and not d.get("aktif", True):
+            raise ValueError(f"çekirdek alan pasife alınamaz: {anahtar}")
         etiket = d.get("etiket")
         if not isinstance(etiket, str) or not etiket.strip():
             raise ValueError("boş etiket")

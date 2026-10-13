@@ -24,6 +24,20 @@ Model promptu, Excel sütunları/başlıkları/genişlikleri, gözden geçirme f
 şeması (`_Sema` sayfası) ayrı bir şeydir: o Excel'in hangi düzenle yazıldığını
 söyler.
 
+**Çekirdek alan** — Pasife alınamayan alan: `fatura_no`, `fatura_tarihi`,
+`sirket_adi`, `vkn`, `vergiler_dahil_tutar`, `para_birimi` (`sema.CEKIRDEK`).
+Özet sayfası, Excel formülleri ve gözden geçirme kartı bunların anlamına
+dayanır. Kendi gömülü doğrulama kuralları vardır (VKN biçimi, 16 karakter
+fatura no, örtük KDV oranı, mükerrer). Kısıt `sema.coz`'da denetlenir: çekirdeği
+pasif şema reddedilir (`ValueError`). `kdv_haric_tutar` bilinçli olarak
+çekirdek dışıdır.
+
+**Pasif alan** — `aktif: false` olan alan; bir alanı "kaldırmak" budur, gerçek
+silme yoktur. Prompt'a girmez, formda görünmez, yeni faturada doldurulmaz
+(worker düşürür), uyarı üretmez — ama **Excel sütunu ve arşivdeki eski verisi
+korunur**. Çekirdek dışı aktif alanlar yalnızca `zorunlu` bayrağı (boşsa uyarı)
+ve tip dönüşüm hatasıyla denetlenir.
+
 **Kaynak** — Bir fatura satırının verisinin nereden geldiği: `Dijital` (PDF'in
 gömülü metin katmanı), `OCR` (PDF görsele çevrilip modele gönderildi) veya `XML`
 (UBL e-fatura doğrudan ayrıştırıldı). Satırda `_teknik_bilgi` alanında durur,

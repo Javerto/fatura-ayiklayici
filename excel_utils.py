@@ -187,6 +187,7 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
     kdv_hrf = get_column_letter(SUTUN["kdv_haric_tutar"])
     tm_hrf  = get_column_letter(SUTUN["toplam_miktar"])
     vt_hrf  = get_column_letter(SUTUN["vergi_tutari"])
+    kht_aktif = "kdv_haric_tutar" in {a.anahtar for a in sema.alanlar if a.aktif}
 
     for ri, s in enumerate(satirlar, 2):
         zebra = zebra_fill if ri % 2 == 0 else None
@@ -205,8 +206,11 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
             if zebra:
                 c.fill = zebra
 
+        # kdv_haric_tutar pasifse yeni satırda yoktur; formül vergiyi dahil
+        # tutar kadar gösterirdi. Arşivde değeri olan eski satırda anlamlı, kalır.
+        vergi_var = kht_aktif or s.get("kdv_haric_tutar") is not None
         jc = ws.cell(row=ri, column=SUTUN["vergi_tutari"],
-                     value=f"=+{vdt_hrf}{ri}-{kdv_hrf}{ri}")
+                     value=f"=+{vdt_hrf}{ri}-{kdv_hrf}{ri}" if vergi_var else None)
         jc.font, jc.border, jc.number_format = f10, kenar, num_fmt
         jc.alignment = Alignment(vertical="center")
         if zebra:

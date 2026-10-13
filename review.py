@@ -36,14 +36,20 @@ def form_satira_uygula(row: dict, form: dict, sema=None) -> dict:
     Düzenlenmeyen alanlar (dosya_yolu, _teknik_bilgi) korunur.
     """
     yeni = dict(row)
+    # Yalnızca formdaki (aktif) alanlar gezilir: pasif alanın arşiv değeri
+    # formda olmadığı için None'a düşmemeli.
+    cevrilemeyen = {}
     for anahtar, _, tip in (sema or _sema.VARSAYILAN).duzenlenebilir:
         ham = (form.get(anahtar) or "").strip()
         if tip == "sayi":
             yeni[anahtar] = to_float(ham) if ham else None
+            if ham and yeni[anahtar] is None:
+                cevrilemeyen[anahtar] = ham
         elif tip == "tarih":
             yeni[anahtar] = tarih_parse(ham) if ham else None
         else:
             yeni[anahtar] = ham or None
+    yeni["_cevrilemeyen"] = cevrilemeyen   # veri_dogrula'nın tip uyarısı için
     return yeni
 
 

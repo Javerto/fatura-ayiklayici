@@ -248,7 +248,7 @@ class Api:
         if not satir:
             return []
         return veri_dogrula(form_satira_uygula(satir, form, self._sema),
-                            self._baska_nolar(haric_i=int(i)))
+                            self._baska_nolar(haric_i=int(i)), self._sema)
 
     def review_onayla(self, duzenlemeler: dict, haric: list,
                       hatirla: list) -> dict:
@@ -453,7 +453,7 @@ class Api:
             satirlar.append({
                 "i":        i,
                 "form":     satir_form_degerleri(satir, self._sema),
-                "uyarilar": veri_dogrula(satir, baska_nolar),
+                "uyarilar": veri_dogrula(satir, baska_nolar, self._sema),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
                 "kaynak":   fatura.kaynak(satir),
