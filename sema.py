@@ -19,6 +19,13 @@ CEKIRDEK = ("fatura_no", "fatura_tarihi", "sirket_adi", "vkn",
             "vergiler_dahil_tutar", "para_birimi")
 VARSAYILAN_GENISLIK = 16
 
+# Promptun sabit Türkçe yönergesi kodda kalır; alanlar şemadan gelir. Serbest
+# prompt metni yok: prompt ile alan tablosu yapısal olarak ayrışamaz.
+PROMPT_BASLIK = """Fatura verilerini (görsel veya metin) dikkatlice incele. Aşağıdaki alanları çıkar.
+SADECE geçerli JSON döndür, başka hiçbir şey yazma, kod bloğu kullanma.
+
+"""
+
 
 class Alan(NamedTuple):
     """Bir alanın Excel, form, öğrenme ve prompt tarafındaki karşılığı."""
@@ -108,6 +115,21 @@ class Sema:
     def tip_haritasi(self) -> dict[str, str]:
         return {a.anahtar: a.tip for a in self.alanlar}
 
+    def prompt(self) -> str:
+        """Modele giden yönerge: sabit başlık + aktif alanlardan JSON iskeleti.
+
+        Sayı alanlarının açıklaması tırnaksız yazılır — eski elle yazılmış
+        promptun modele "burası sayı" deme biçimi buydu, korunuyor.
+        """
+        satirlar = []
+        for a in self.alanlar:
+            if not a.aktif:
+                continue
+            aciklama = a.aciklama or a.etiket
+            satirlar.append(f'  "{a.anahtar}": '
+                            + (aciklama if a.tip == "sayi" else f'"{aciklama}"'))
+        return PROMPT_BASLIK + "{\n" + ",\n".join(satirlar) + "\n}"
+
     def json(self) -> dict:
         """Dosyaya yazılacak biçim."""
         return {"surum": SURUM, "alanlar": [
@@ -132,7 +154,7 @@ def _slug(etiket: str, kullanilan: set) -> str:
     return aday
 
 
-def _coz(ham) -> Sema:
+def coz(ham) -> Sema:
     """Ham JSON'dan Sema; biçim bozuksa ValueError.
 
     Onarılanlar (dosyaya geri yazılır): eksik `anahtar` etiketten, eksik `sutun`
@@ -196,7 +218,7 @@ def _coz(ham) -> Sema:
         zorunlu=bool(d.get("zorunlu", False))) for d in girdiler])
 
 
-VARSAYILAN = _coz(TOHUM)
+VARSAYILAN = coz(TOHUM)
 
 
 def yaz(yol, s: Sema) -> None:
@@ -238,7 +260,7 @@ def oku(yol) -> Sema:
     except (OSError, ValueError):
         return VARSAYILAN
     try:
-        s = _coz(ham)
+        s = coz(ham)
     except (ValueError, TypeError, AttributeError):
         # ponytail: hata sessiz; editör (#8) gelince kullanıcıya gösterilmeli
         return VARSAYILAN

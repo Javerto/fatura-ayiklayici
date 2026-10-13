@@ -8,6 +8,7 @@ import json, os, re, pathlib
 from datetime import datetime as _dt
 
 from hatalar import PDFHatasi, XMLHatasi, ModelHatasi
+import sema as _sema
 
 # ─── AYARLAR ─────────────────────────────────────────────────────────────────
 MAX_WORKERS = 5    # paralel thread sayısı
@@ -16,23 +17,6 @@ MAX_WORKERS = 5    # paralel thread sayısı
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────────────────────
-
-PROMPT_SABLON = """Fatura verilerini (görsel veya metin) dikkatlice incele. Aşağıdaki alanları çıkar.
-SADECE geçerli JSON döndür, başka hiçbir şey yazma, kod bloğu kullanma.
-
-{
-  "fatura_no": "fatura numarası — Türk e-fatura standardı: 3 karakter (büyük harf veya rakam) + 4 haneli yıl + 9 haneli sıra, toplam 16 karakter (örn: GIB2024000000001). Fazladan sıfır EKLEME.",
-  "fatura_tarihi": "GG.AA.YYYY formatında tarih",
-  "sirket_adi": "faturayı kesen SATICI şirketin adı. Faturada iki şirket varsa ALICI değil SATICI olanı yaz.",
-  "tanim": "ilk kalem ya da ana hizmetin açıklaması",
-  "toplam_miktar": toplam adet/miktar (sadece sayı, örnek: 7 veya 14.5),
-  "kdv_haric_tutar": KDV hariç Mal/Hizmet Toplam Tutarı, TL cinsinden sayı. EUR ve TL varsa TL ver. Yoksa null,
-  "vergiler_dahil_tutar": Vergiler Dahil Toplam Tutar, TL cinsinden sayı. "Ödenecek Tutar(TL)" veya "Vergiler Dahil Toplam Tutar(TL)" satırını bul. EUR/TL karışıksa TL ver,
-  "para_birimi": "TL ya da yalnızca döviz varsa EUR veya USD",
-  "vkn": "SATICI şirketin VKN'i (10-11 haneli). Faturada birden fazla VKN varsa SATICI olana ait olanı yaz.",
-  "vergi_dairesi": "satıcı şirketin vergi dairesi adı",
-  "sira_no": yatırım teşvik belgesinin kaçıncı sıra nosu — SADECE şu kalıplardan birinde geçiyorsa al: "X sırasında KDV istisnası", "Yerli Liste X sırasında", "Sıra No: X kapsamında","Liste Y-x sıra numarasına istinaden". Diğer no alanlarını ASLA alma. Yoksa null
-}"""
 
 SIRA_PATTERN = re.compile(
     r'(\d+)\s*s[ıi]ras[ıi]nda\s*KDV'
@@ -363,19 +347,21 @@ def pdf_text_ayikla(dosya_yolu: str) -> str:
 
 
 def pdf_den_veri_cek(dosya_yolu: str, istemci, zoom: float = 1.5,
-                     metin: str | None = None) -> dict:
+                     metin: str | None = None, sema=None) -> dict:
     """
     Hibrid yöntem: Önce dijital metni çekmeyi dener, bulamazsa görsele başvurur.
 
     `metin` dışarıdan verilirse (çağıran zaten çıkarmışsa) tekrar çıkarılmaz.
     `istemci` modelle konuşmanın tek kapısı (bkz. gemini.ModelIstemcisi);
     hız sınırı, yeniden deneme ve hata sınıflandırma onun ardında kalır.
+    `sema` promptu ve alan tiplerini belirler (verilmezse varsayılan şema).
     """
+    sema = sema or _sema.VARSAYILAN
     # 1. Metin verilmediyse çıkar (verildiyse çift çıkarmayı önle)
     if metin is None:
         metin = pdf_text_ayikla(dosya_yolu)
 
-    parcalar = [PROMPT_SABLON]
+    parcalar = [sema.prompt()]
     is_digital = len(metin) > 100   # Anlamlı bir metin varsa dijital kabul et
 
     if is_digital:
@@ -389,9 +375,11 @@ def pdf_den_veri_cek(dosya_yolu: str, istemci, zoom: float = 1.5,
     raw_fn = str(veri.get("fatura_no") or "").strip()
     if raw_fn:
         veri["fatura_no"], _ = _duzelt_fatura_no(raw_fn)
-    veri["fatura_tarihi"] = tarih_parse(str(veri.get("fatura_tarihi", "") or ""))
-    for alan in ("toplam_miktar", "kdv_haric_tutar", "vergiler_dahil_tutar", "sira_no"):
-        veri[alan] = to_float(veri.get(alan))
+    for alan, tip in sema.tip_haritasi.items():
+        if tip == "tarih":
+            veri[alan] = tarih_parse(str(veri.get(alan, "") or ""))
+        elif tip == "sayi":
+            veri[alan] = to_float(veri.get(alan))
     veri["dosya_yolu"] = str(pathlib.Path(dosya_yolu).resolve())
     veri["_teknik_bilgi"] = "Dijital" if is_digital else "OCR"
     return veri
