@@ -26,9 +26,10 @@ class Alan(NamedTuple):
     ogrenilir: bool = False     # VKN bazlı firma-sabit alan mı
 
 
-# Sıra = gözden geçirme formundaki sıra. Excel sütun numaraları AÇIKÇA yazılır,
-# listedeki sıradan türetilmez: eski Excel dosyaları o konumlardan okunuyor,
-# listeyi yeniden sıralamak arşivi bozmamalı.
+# Sıra = gözden geçirme formundaki sıra. `sutun` yazma düzenidir; okuma önce
+# Excel'in gömülü şema sayfasına, sonra başlıklara bakar (excel_utils). Bu
+# numaralar yalnızca ikisi de olmayan eski dosyalar için son çaredir — mevcut
+# alanları yeniden numaralandırma, o dosyalar kayar.
 ALANLAR = [
     Alan("fatura_no",            2,  "Fatura No",            22, "Fatura No",            "metin"),
     Alan("fatura_tarihi",        3,  "Fatura Tarihi",        13, "Fatura Tarihi",        "tarih"),

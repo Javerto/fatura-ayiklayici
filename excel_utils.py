@@ -17,6 +17,9 @@ from ozet import ozet_hesapla
 SUTUN_BILGISI = sorted((a for a in ALANLAR if a.baslik), key=lambda a: a.sutun)
 # Satırdan doğrudan yazılan/okunan alanlar (formül ve dosya sütunları hariç).
 VERI_ALANLARI = [a for a in ALANLAR if a.etiket]
+# Gizli sayfa: dosyanın hangi düzenle yazıldığını (anahtar → sütun) taşır, böylece
+# okuma koddaki sütun numaralarına değil dosyanın kendisine güvenir.
+SEMA_SAYFASI = "_Sema"
 
 
 def _bos(alan):
@@ -76,22 +79,31 @@ def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
     ws = wb["Faturalar"] if "Faturalar" in wb.sheetnames else wb.worksheets[0]
     satirlar, islenenmis = [], set()
 
-    for row in ws.iter_rows(min_row=2, max_col=SUTUN["kaynak"]):
-        b_val = row[SUTUN["fatura_no"] - 1].value
+    sutun = _sutun_haritasi(wb, ws)
+    for row in ws.iter_rows(min_row=2, max_col=max(sutun.values())):
+        def hucre(anahtar):
+            # Gömülü şemada olmayan alan bu dosyada hiç yazılmamış demektir.
+            return row[sutun[anahtar] - 1] if anahtar in sutun else None
+
+        def deger(anahtar):
+            c = hucre(anahtar)
+            return c.value if c is not None else None
+
+        b_val = deger("fatura_no")
         if not b_val or str(b_val).strip().upper() == "TOPLAM":
             continue
-        kaynak_val = row[SUTUN["kaynak"] - 1].value
-        s = {a.anahtar: row[a.sutun - 1].value for a in VERI_ALANLARI}
+        kaynak_val = deger("kaynak")
+        s = {a.anahtar: deger(a.anahtar) for a in VERI_ALANLARI}
         s["_teknik_bilgi"] = str(kaynak_val).strip() if kaynak_val else ""
-        n_cell     = row[SUTUN["dosya"] - 1]
-        gizli_cell = row[SUTUN["dosya_yolu_gizli"] - 1]
+        n_cell = hucre("dosya")
         dosya_yolu = ""
-        # O sütunu: tam dosya yolu — hyperlink bozulsa bile güvenilir kaynak
-        gizli_val = str(gizli_cell.value).strip() if gizli_cell.value else ""
+        # Gizli sütun: tam dosya yolu — hyperlink bozulsa bile güvenilir kaynak
+        gizli_val = deger("dosya_yolu_gizli")
+        gizli_val = str(gizli_val).strip() if gizli_val else ""
         if gizli_val.lower().endswith((".pdf", ".xml")):
             dosya_yolu = gizli_val
             islenenmis.add(os.path.basename(gizli_val).lower())
-        else:
+        elif n_cell is not None:
             # Geriye dönük uyumluluk: eski format — hyperlink'ten oku
             if n_cell.hyperlink and n_cell.hyperlink.target:
                 dosya_yolu = url_dosya(n_cell.hyperlink.target)
@@ -105,6 +117,31 @@ def mevcut_verileri_oku(cikti: str) -> tuple[list[dict], set[str]]:
 
     wb.close()
     return satirlar, islenenmis
+
+
+def _sutun_haritasi(wb, ws) -> dict[str, int]:
+    """Dosyanın hangi sütunda neyi tuttuğu (anahtar → sütun), üç kademede.
+
+    1. Gömülü şema sayfası (`SEMA_SAYFASI`) — dosyanın kendi beyanı.
+    2. Başlık satırı — şeması olmayan ama "Fatura No" başlığı tanınan dosya;
+       başlıksız sütunlar (gizli yol) sabit numarasında kalır.
+    3. Bugünkü sabit sütun numaraları — en eski dosyalar.
+    """
+    if SEMA_SAYFASI in wb.sheetnames:
+        harita = {}
+        for anahtar, sutun in wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True):
+            if anahtar and isinstance(sutun, int) and sutun > 0:
+                harita[str(anahtar)] = sutun
+        if "fatura_no" in harita:
+            return harita
+        # ponytail: bozuk/boş şema sayfası → alt kademelere düş, hata verme
+
+    baslik_anahtar = {a.baslik: a.anahtar for a in ALANLAR if a.baslik}
+    basliklar = {baslik_anahtar[str(c.value).strip()]: c.column
+                 for c in ws[1] if c.value and str(c.value).strip() in baslik_anahtar}
+    if "fatura_no" in basliklar:
+        return {**SUTUN, **basliklar}
+    return dict(SUTUN)
 
 
 def excel_olustur(satirlar: list, cikti: str):
@@ -218,8 +255,17 @@ def excel_olustur(satirlar: list, cikti: str):
     tc.border, tc.fill = kenar, toplam_fill
 
     _ozet_sayfasi_yaz(wb, satirlar)
+    _sema_sayfasi_yaz(wb)
 
     _guvenli_kaydet(wb, cikti)
+
+
+def _sema_sayfasi_yaz(wb):
+    ws = wb.create_sheet(SEMA_SAYFASI)
+    ws.append(["anahtar", "sutun"])
+    for a in sorted(ALANLAR, key=lambda a: a.sutun):
+        ws.append([a.anahtar, a.sutun])
+    ws.sheet_state = "hidden"
 
 
 def _guvenli_kaydet(wb, cikti: str):

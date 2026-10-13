@@ -23,7 +23,9 @@ def test_ozet_sayfasi_olusur_ve_ana_sayfa_aktif_kalir(tmp_path):
     cikti = str(tmp_path / "c.xlsx")
     excel_olustur(_satirlar(tmp_path), cikti)
     wb = load_workbook(cikti)
-    assert wb.sheetnames == ["Faturalar", "Özet"]
+    # Gizli şema sayfası (_Sema) kullanıcıya görünmez; görünen sıra bu.
+    gorunen = [ws.title for ws in wb.worksheets if ws.sheet_state == "visible"]
+    assert gorunen == ["Faturalar", "Özet"]
     assert wb.active.title == "Faturalar"
     ws = wb["Özet"]
     hucre_metinleri = [str(c.value) for row in ws.iter_rows()
