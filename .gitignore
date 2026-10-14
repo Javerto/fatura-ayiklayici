@@ -22,3 +22,6 @@ test_icon.ico
 output.txt
 error.txt
 output2.txt
+
+# Tarayıcı aracı kayıtları (fatura verisi içerebilir)
+.playwright-mcp/
