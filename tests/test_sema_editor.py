@@ -66,7 +66,8 @@ def _yeni(etiket, tip="metin", **k):
 
 def test_yeni_alan_sona_sutun_ve_slugdan_anahtar_alir(tmp_path):
     api = Api(kok=tmp_path)
-    alanlar = _alanlar(api) + [_yeni("Sipariş No", "sayi", ogrenilir=True,
+    # Öğrenilir yalnızca metin alanında açılabilir (bkz. test_sema_kisit).
+    alanlar = _alanlar(api) + [_yeni("Sipariş No", "metin", ogrenilir=True,
                                      zorunlu=True),
                                _yeni("Fatura-No")]     # slug "fatura_no" dolu
 
@@ -74,7 +75,7 @@ def test_yeni_alan_sona_sutun_ve_slugdan_anahtar_alir(tmp_path):
 
     s = sema.oku(tmp_path / "alanlar.json")
     sip, fno2 = s.alanlar[-2], s.alanlar[-1]
-    assert (sip.anahtar, sip.tip, sip.sutun) == ("siparis_no", "sayi", 17)
+    assert (sip.anahtar, sip.tip, sip.sutun) == ("siparis_no", "metin", 17)
     assert sip.ogrenilir and sip.zorunlu and sip.aktif
     assert (fno2.anahtar, fno2.sutun) == ("fatura_no_2", 18)
 

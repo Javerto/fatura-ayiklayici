@@ -96,7 +96,8 @@ def test_sema_editoru_anahtarlari(tmp_path):
     o = Api(kok=tmp_path).sema_oku()
     assert set(o) == {"alanlar", "tipler", "dosya_hatasi", "sistem_basliklar"}
     assert set(o["alanlar"][0]) == {"anahtar", "etiket", "tip", "aciklama",
-                                    "cekirdek", "aktif", "zorunlu", "ogrenilir"}
+                                    "cekirdek", "aktif", "zorunlu", "ogrenilir",
+                                    "ogrenilebilir"}
     # editor.js'teki ED_TIP her tipi tanımalı, yoksa seçim kutusunda eksik kalır
     js = pathlib.Path("web/editor.js").read_text("utf-8")
     for tip in o["tipler"]:

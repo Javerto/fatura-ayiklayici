@@ -100,6 +100,7 @@ function edSec(i) {
   const a = E.alanlar[E.secili];
   if (!a) { $("edForm").innerHTML = ""; return; }
   const tipKilitli = !!a.anahtar;
+  const ogrenKilitli = !edOgrenilebilir(a);
   $("edForm").innerHTML = `
     <div class="f" data-ed="etiket"><span>Etiket (Excel başlığı ve form etiketi)</span>
       <input id="edEtiket" value="${kacar(a.etiket)}" spellcheck="false"></div>
@@ -111,10 +112,12 @@ function edSec(i) {
       <div class="ipucu">${tipKilitli
         ? "Tip yalnızca alan oluşturulurken seçilir. Sonradan değişirse aynı Excel sütununda metin ve sayı karışır."
         : "Kaydettikten sonra tip değiştirilemez."}</div></div>
-    <label class="learn"><input type="checkbox" id="edOgrenilir" ${a.ogrenilir ? "checked" : ""}>
+    <label class="learn"><input type="checkbox" id="edOgrenilir" ${a.ogrenilir ? "checked" : ""} ${
+      ogrenKilitli ? "disabled" : ""}>
       <div><div class="t">Firma için hatırla</div>
-      <div class="d">Gözden geçirmede düzelttiğiniz değer bu VKN'ye kaydedilir; aynı firmanın
-        sonraki faturalarında otomatik düzeltilir.</div></div></label>
+      <div class="d">${ogrenKilitli
+        ? "Yalnızca firmaya göre değişmeyen metin alanlarında (ör. vergi dairesi) açılabilir."
+        : "Gözden geçirmede düzelttiğiniz değer bu VKN'ye kaydedilir; aynı firmanın sonraki faturalarında otomatik düzeltilir."}</div></div></label>
     <label class="learn"><input type="checkbox" id="edZorunlu" ${a.zorunlu ? "checked" : ""} ${
       a.cekirdek ? "disabled" : ""}>
       <div><div class="t">Zorunlu</div>
@@ -137,6 +140,12 @@ function edSec(i) {
   edUyariGoster();
   document.querySelectorAll("#edListe .rvrow").forEach(r =>
     r.classList.toggle("on", +r.dataset.i === E.secili));
+}
+
+/** "Firma için hatırla" açılabilir mi — kaydedilmiş alanda Python söyler
+    (`sema.ogrenilebilir`), yeni alanda yalnızca metin tipi. */
+function edOgrenilebilir(a) {
+  return a.anahtar ? a.ogrenilebilir : a.tip === "metin";
 }
 
 /** Seçili alanın mesajlarını yerinde günceller — formu yeniden kurmadan. */
@@ -289,8 +298,14 @@ function editorKur() {
   $("edForm").addEventListener("change", e => {
     const a = E.alanlar[E.secili];
     if (!a) return;
-    if (e.target.id === "edTip" && !a.anahtar) a.tip = e.target.value;
-    else if (e.target.id === "edOgrenilir") a.ogrenilir = e.target.checked;
+    if (e.target.id === "edTip" && !a.anahtar) {
+      a.tip = e.target.value;
+      if (!edOgrenilebilir(a)) a.ogrenilir = false;
+      edDegisti();
+      edSec(E.secili);                  // kutunun kilidi tipe bağlı
+      return;
+    }
+    else if (e.target.id === "edOgrenilir" && edOgrenilebilir(a)) a.ogrenilir = e.target.checked;
     else if (e.target.id === "edZorunlu" && !a.cekirdek) a.zorunlu = e.target.checked;
     else return;
     edDegisti();

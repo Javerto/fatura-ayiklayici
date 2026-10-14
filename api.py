@@ -221,8 +221,9 @@ class Api:
             return {"hata": "Bir işlem sürerken alanlar düzenlenemez."}
         s, hata = sema.oku_ayrintili(self._alanlar)
         return {"alanlar": [
-                    {k: a[k] for k in ("anahtar", "etiket", "tip", "aciklama",
-                                       "cekirdek", "aktif", "zorunlu", "ogrenilir")}
+                    {**{k: a[k] for k in ("anahtar", "etiket", "tip", "aciklama",
+                                          "cekirdek", "aktif", "zorunlu", "ogrenilir")},
+                     "ogrenilebilir": sema.ogrenilebilir(a["anahtar"], a["tip"])}
                     for a in s.json()["alanlar"]],
                 "tipler": list(sema.TIPLER),
                 "sistem_basliklar": [a.baslik for a in sema.SISTEM_ALANLARI if a.baslik],
@@ -617,9 +618,11 @@ class Api:
                 kurallar = kural_ekle(kurallar, vkn, alanlar, self._sema)
                 eklenen += 1
         if eklenen:
+            # Excel bu noktada yazılmış: hata JS'e kaçarsa onay akışı yarıda
+            # kalır. TypeError/ValueError = JSON'a yazılamayan değer.
             try:
                 kurallari_yaz(self._duzeltme, kurallar)
-            except OSError:
+            except (OSError, TypeError, ValueError):
                 return 0
         return eklenen
 

@@ -144,6 +144,20 @@ class Sema:
             for a in self.alanlar]}
 
 
+def ogrenilebilir(anahtar, tip) -> bool:
+    """"Firma için hatırla" açılabilir mi: yalnızca firma-sabit metin alanları.
+
+    Çekirdek alanlardan yalnızca tohumda öğrenilen (şirket adı) açılabilir —
+    fatura_no öğrenilirse firmanın her faturası aynı numarayı alır. Metin dışı
+    değer kurallar JSON'una yazılamaz (tarih → TypeError).
+    """
+    if tip != "metin":
+        return False
+    if anahtar in CEKIRDEK:
+        return any(d["anahtar"] == anahtar and d["ogrenilir"] for d in TOHUM["alanlar"])
+    return True
+
+
 _TR = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
 
 
@@ -204,6 +218,8 @@ def coz(ham) -> Sema:
         if anahtar not in tohum and sutun is not None and (
                 type(sutun) is not int or sutun < 1 or sutun in ayrilmis):
             raise ValueError(f"geçersiz sütun: {sutun!r}")
+        if d.get("ogrenilir") and not ogrenilebilir(anahtar, d["tip"]):
+            raise ValueError(f"“{etiket.strip()}” alanı için “Firma için hatırla” açılamaz")
         girdiler.append(d)
 
     # Anahtarlar önce dosyada yazılı olanlar arasından, sonra eksikler türetilir:

@@ -128,3 +128,21 @@ def test_mevcut_satirlar_korunur(api, tmp_path):
     satirlar, _ = mevcut_verileri_oku(cikti)
     assert sorted(s["fatura_no"] for s in satirlar) == \
         ["GIB2024000000101", "GIB2024000000102"]
+
+
+@pytest.mark.parametrize("hata", [TypeError("datetime yazılamaz"), ValueError("x"),
+                                  OSError("disk")])
+def test_kural_yazilamazsa_onay_tamamlanir(api, tmp_path, monkeypatch, hata):
+    """Excel yazıldıktan sonra kural kaydı patlarsa hata JS'e kaçıyordu: Onayla
+    butonu ölüyor, ekran açık kalıyor ama Excel çoktan yazılmış oluyordu."""
+    cikti = _review_kur(api, tmp_path, [_satir("GIB2024000000101")])
+
+    def patla(*a):
+        raise hata
+    monkeypatch.setattr("api.kurallari_yaz", patla)
+
+    sonuc = api.review_onayla({}, [], [0])
+
+    assert sonuc["ok"] and sonuc["yazilan"] == 1 and sonuc["kural"] == 0
+    assert api._review is None
+    assert len(mevcut_verileri_oku(cikti)[0]) == 1
