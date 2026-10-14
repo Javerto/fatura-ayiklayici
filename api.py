@@ -244,8 +244,8 @@ class Api:
         arasında bir koşu başlamasın.
         """
         with self._baslatma_kilidi:
-            if self._calisiyor:
-                return {"hata": "Bir işlem sürerken alanlar kaydedilemez."}
+            if self._calisiyor or self._deneniyor:
+                return {"hata": "Bir işlem ya da deneme sürerken alanlar kaydedilemez."}
             try:
                 s = sema.coz({"surum": sema.SURUM,
                               "alanlar": self._editor_alanlari(alanlar)})

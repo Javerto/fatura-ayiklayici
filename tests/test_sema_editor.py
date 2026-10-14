@@ -151,6 +151,17 @@ def test_kosu_surerken_kaydedilmez(tmp_path):
     assert sema.oku(tmp_path / "alanlar.json").alanlar[0].etiket == "Fatura No"
 
 
+def test_deneme_surerken_kaydedilmez(tmp_path):
+    """Dene kayıtlı şemayı okur; deneme sürerken kayıt sonucu hangi şemayla
+    alındığını belirsizleştirir."""
+    api = Api(kok=tmp_path)
+    alanlar = _alanlar(api)
+    alanlar[0]["etiket"] = "Başka"
+    api._deneniyor = True
+    assert "hata" in api.sema_kaydet(alanlar)
+    assert sema.oku(tmp_path / "alanlar.json").alanlar[0].etiket == "Fatura No"
+
+
 def test_kaydet_calisan_kosunun_semasini_degistirmez(tmp_path):
     """Gözden geçirme/onay o koşunun şemasıyla çalışır; yeni şema sonraki
     `basla`'da okunur."""
