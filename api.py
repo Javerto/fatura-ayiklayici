@@ -163,6 +163,13 @@ class Api:
             klasor = (ayarlar.get("klasor") or "").strip()
             if not klasor or not os.path.isdir(klasor):
                 return {"hata": "Lütfen geçerli bir klasör seçin."}
+            # Bozuk şemayla koşmak = tohumla koşmak: kullanıcının kendi
+            # alanları okunmaz ve onayla arşivden düşer. Sessizce devam etme.
+            s, sema_hatasi = sema.oku_ayrintili(self._alanlar)
+            if sema_hatasi:
+                return {"hata": f"Alan tanımları okunamadı ({sema_hatasi}). "
+                                "Alanlar ekranından alanları kontrol edip kaydedin.",
+                        "sema_hatasi": True}
 
             cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
             self._klasor = klasor
@@ -172,7 +179,7 @@ class Api:
             self._stop_event.clear()
             self._log_q = queue.Queue()
             self._calisiyor = True
-            self._sema = sema.oku(self._alanlar)
+            self._sema = s
 
             retry = ayarlar.get("retry") or None
             threading.Thread(

@@ -69,3 +69,20 @@ def test_es_zamanli_iki_basla_cagrisindan_biri_reddedilir(tmp_path, monkeypatch)
         t.join()
 
     assert sum("ok" in s for s in sonuclar) == 1, sonuclar
+
+
+def test_bozuk_semayla_kosu_baslamaz(tmp_path, monkeypatch):
+    """Bozuk alanlar.json sessizce tohuma düşüyordu: kullanıcının kendi
+    alanları o koşuda hiç okunmuyor, onayla birlikte arşivden siliniyordu."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    calisan = []
+    monkeypatch.setattr("api.worker", lambda *a, **k: calisan.append(1))
+    api = Api(kok=tmp_path)
+    monkeypatch.setattr(api, "_pompa", lambda: None)
+    (tmp_path / "alanlar.json").write_text("{bozuk", "utf-8")
+
+    sonuc = api.basla({"klasor": str(tmp_path), "cikti": "x"})
+
+    assert sonuc.get("sema_hatasi") is True
+    assert "Alanlar" in sonuc["hata"]
+    assert not calisan and not api._calisiyor

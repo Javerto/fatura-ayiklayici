@@ -303,6 +303,10 @@ async function basla(retry) {
     $("btnBasla").disabled = false;
     $("btnRetry").disabled = !D.atlanan;
     if (cevap.hata === "api_key") apiKeyModal();
+    else if (cevap.sema_hatasi) {       // bozuk alanlar.json: editöre yönlendir
+      await bilgiModal("Alanlar okunamadı", cevap.hata);
+      editorAc();
+    }
     else bilgiSatiri(cevap.hata, "err");
     return;
   }
