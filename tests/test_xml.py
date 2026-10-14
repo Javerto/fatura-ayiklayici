@@ -58,3 +58,38 @@ def test_bozuk_xml_hata_firlatir(tmp_path):
     bozuk.write_text("<Invoice><eksik", encoding="utf-8")
     with pytest.raises(XMLHatasi):
         xml_den_veri_cek(str(bozuk), None)
+
+
+# GİB UBL-TR'de satıcı VKN'si PartyIdentification/cbc:ID[@schemeID="VKN"]
+# içinde durur; PartyTaxScheme/CompanyID çoğu faturada hiç yoktur. eLogo'dan
+# inen gerçek faturaların hepsinde VKN böyle boş geliyordu. Şahıs satıcıda
+# şema "TCKN" olur; ID'lerin sırası faturaya göre değişir.
+def _satici_xml(tmp_path, kimlikler):
+    ids = "".join(
+        f'<cac:PartyIdentification><cbc:ID schemeID="{s}">{v}</cbc:ID></cac:PartyIdentification>'
+        for s, v in kimlikler)
+    yol = tmp_path / "ubltr.xml"
+    yol.write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2">
+  <cbc:ID>ABC2026000000001</cbc:ID>
+  <cac:AccountingSupplierParty><cac:Party>
+    {ids}
+    <cac:PartyName><cbc:Name>Ornek A.S.</cbc:Name></cac:PartyName>
+    <cac:PartyTaxScheme><cac:TaxScheme><cbc:Name>PENDIK</cbc:Name></cac:TaxScheme></cac:PartyTaxScheme>
+  </cac:Party></cac:AccountingSupplierParty>
+</Invoice>""", encoding="utf-8")
+    return str(yol)
+
+
+def test_vkn_party_identification_dan_okunur(tmp_path):
+    yol = _satici_xml(tmp_path, [("TICARETSICILNO", "12345678"),
+                                 ("MERSISNO", "0123456789000015"),
+                                 ("VKN", "9876543210")])
+    assert xml_den_veri_cek(yol, None)["vkn"] == "9876543210"
+
+
+def test_sahis_saticida_tckn_okunur(tmp_path):
+    yol = _satici_xml(tmp_path, [("TCKN", "12345678901")])
+    assert xml_den_veri_cek(yol, None)["vkn"] == "12345678901"

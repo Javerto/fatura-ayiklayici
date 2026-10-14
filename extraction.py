@@ -294,7 +294,11 @@ def xml_den_veri_cek(xml_yolu: str, pdf_yolu: str | None) -> dict:
 
     satici = "cac:AccountingSupplierParty/cac:Party"
     sirket_adi    = bul(f"{satici}/cac:PartyName/cbc:Name")
-    vkn           = bul(f"{satici}/cac:PartyTaxScheme/cbc:CompanyID")
+    # UBL-TR'de VKN/TCKN PartyIdentification içinde (schemeID ile); eski
+    # CompanyID yeri yedek — gerçek faturaların çoğunda hiç yok.
+    vkn = (bul(f"{satici}/cac:PartyIdentification/cbc:ID[@schemeID='VKN']")
+           or bul(f"{satici}/cac:PartyIdentification/cbc:ID[@schemeID='TCKN']")
+           or bul(f"{satici}/cac:PartyTaxScheme/cbc:CompanyID"))
     vergi_dairesi = bul(f"{satici}/cac:PartyTaxScheme/cac:TaxScheme/cbc:Name")
 
     kdv_haric = bul("cac:LegalMonetaryTotal/cbc:TaxExclusiveAmount")
