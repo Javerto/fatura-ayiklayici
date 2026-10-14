@@ -126,36 +126,70 @@ def mevcut_verileri_oku(cikti: str, sema=None) -> tuple[list[dict], set[str]]:
 def _sutun_haritasi(wb, ws) -> dict[str, int]:
     """Dosyanın hangi sütunda neyi tuttuğu (anahtar → sütun), üç kademede.
 
-    1. Gömülü şema sayfası (`SEMA_SAYFASI`) — dosyanın kendi beyanı.
-    2. Başlık satırı — şeması olmayan ama "Fatura No" başlığı tanınan dosya;
-       başlıksız sütunlar (gizli yol) sabit numarasında kalır.
+    1. Gömülü şema sayfası (`SEMA_SAYFASI`) — dosyanın kendi beyanı. Beyan
+       başlık da taşıyorsa ve bir başlık başlık satırında BAŞKA bir sütunda
+       duruyorsa (kullanıcı sütun sildi/ekledi) numaralar güvenilmez: o
+       beyanın başlıklarıyla kademe 2'ye düşülür.
+    2. Başlık satırı — "Fatura No" başlığı tanınan dosya; başlıksız sütunlar
+       (gizli yol) soldaki en yakın bulunan komşunun kaymasıyla bulunur.
     3. Bugünkü sabit sütun numaraları — en eski dosyalar.
     """
-    harita = _gomulu_sema(wb)
-    if harita:
-        return harita
+    satir1 = {str(c.value).strip(): c.column for c in ws[1] if c.value is not None}
+    beyan = _gomulu_sema(wb)
+    if beyan:
+        # Yalnızca yeniden adlandırılan başlık (bulunamayan) kaymayı göstermez:
+        # o durumda numaralar hâlâ doğru, başlığa düşmek o alanı kaybederdi.
+        kaymis = any(b in satir1 and satir1[b] != s for s, b, _ in beyan.values() if b)
+        if not kaymis:
+            return {k: s for k, (s, _, _) in beyan.items()}
+        harita = _basliktan(satir1, {k: (s, b) for k, (s, b, _) in beyan.items()})
+        if "fatura_no" in harita:
+            return harita
     # ponytail: bozuk/boş şema sayfası → alt kademelere düş, hata verme
 
     # Başlıklar tohumunkiler: kullanıcı etiketi değiştirse de eski dosya tanınır.
-    baslik_anahtar = {a.baslik: a.anahtar for a in TOHUM_ALANLARI if a.baslik}
-    basliklar = {baslik_anahtar[str(c.value).strip()]: c.column
-                 for c in ws[1] if c.value and str(c.value).strip() in baslik_anahtar}
-    if "fatura_no" in basliklar:
-        return {**TOHUM_SUTUN, **basliklar}
-    return dict(TOHUM_SUTUN)
+    harita = _basliktan(satir1, {a.anahtar: (a.sutun, a.baslik) for a in TOHUM_ALANLARI})
+    return harita if "fatura_no" in harita else dict(TOHUM_SUTUN)
 
 
-def _gomulu_sema(wb) -> dict[str, int] | None:
-    """`_Sema` sayfasının beyanı (anahtar → sütun); yoksa ya da bozuksa None.
+def _basliktan(satir1: dict, beyan: dict) -> dict[str, int]:
+    """Başlık satırından anahtar → sütun. `beyan`: {anahtar: (sütun, başlık)}.
 
-    Tek ayrıştırma noktası: okuma kademesi, uyuşmazlık uyarısı ve arşiv
-    şeması aynı satırları aynı denetimle görsün.
+    Başlığı bulunamayan alan haritaya girmez (silinmiş; sabit numarası artık
+    başka bir alanın verisini tutuyor olabilir). Başlıksız sütunun yeri, soldaki
+    en yakın bulunan komşunun kaymasından ve aradaki bulunamayan (silinmiş)
+    başlıklı sütun sayısından çıkarılır.
+    """
+    harita = {k: satir1[b] for k, (_, b) in beyan.items() if b and b in satir1}
+    for k, (s, b) in beyan.items():
+        if b:
+            continue
+        solda = [(beyan[j][0], harita[j]) for j in harita if beyan[j][0] < s]
+        if not solda:
+            harita[k] = s
+            continue
+        eski, yeni = max(solda)
+        silinen = sum(1 for j, (t, bb) in beyan.items()
+                      if bb and eski < t < s and j not in harita)
+        harita[k] = yeni + (s - eski) - silinen
+    return harita
+
+
+def _gomulu_sema(wb) -> dict[str, tuple] | None:
+    """`_Sema` beyanı: {anahtar: (sütun, başlık, tip)}; yoksa ya da bozuksa None.
+
+    Eski (iki sütunlu) sayfalarda başlık ve tip None'dır. Tek ayrıştırma
+    noktası: okuma kademesi, uyuşmazlık uyarısı ve arşiv şeması aynı
+    satırları aynı denetimle görsün.
     """
     if SEMA_SAYFASI not in wb.sheetnames:
         return None
-    harita = {str(k): s for k, s in wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True)
-              if k and isinstance(s, int) and s > 0}
-    return harita if "fatura_no" in harita else None
+    beyan = {}
+    for r in wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True):
+        k, s, b, t = (tuple(r) + (None,) * 4)[:4]
+        if k and isinstance(s, int) and s > 0:
+            beyan[str(k)] = (s, str(b) if b else None, t if t in _sema.TIPLER else None)
+    return beyan if "fatura_no" in beyan else None
 
 
 def _arsiv_beyani(cikti: str):
@@ -192,13 +226,13 @@ def arsiv_semasi(cikti: str, sema=None):
     gomulu, basliklar = beyan
     dolu = set(sema.sutun.values())
     ekler = []
-    for k, s in sorted(gomulu.items(), key=lambda x: x[1]):
+    for k, (s, b, _) in sorted(gomulu.items(), key=lambda x: x[1][0]):
         if k in sema.sutun:
             continue
+        baslik = str(b or basliklar.get(s) or k)
         if s in dolu:
             s = max(dolu) + 1
         dolu.add(s)
-        baslik = str(basliklar.get(gomulu[k]) or k)
         ekler.append(_sema.Alan(k, s, baslik, _sema.VARSAYILAN_GENISLIK,
                                 etiket=baslik, aktif=False))
     return _sema.Sema(sema.alanlar + ekler) if ekler else sema
@@ -219,7 +253,8 @@ def sema_farki(cikti: str, sema=None) -> dict | None:
     gomulu, basliklar = beyan
     aktif = {a.anahtar: a for a in sema.tum_alanlar}
     # Arşive özgü alanın etiketi şemada yok; kullanıcı anahtarı değil başlığı tanır.
-    fazla = [str(basliklar.get(s) or k) for k, s in gomulu.items() if k not in aktif]
+    fazla = [str(b or basliklar.get(s) or k) for k, (s, b, _) in gomulu.items()
+             if k not in aktif]
     yeni = [a.baslik or a.anahtar for k, a in aktif.items() if k not in gomulu]
     return {"arsivde_fazla": fazla, "yeni": yeni} if fazla or yeni else None
 
@@ -355,10 +390,12 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
 def _sema_sayfasi_yaz(wb, sema):
     # Pasif alanlar da yazılır: yazılmazsa kademe 1 onları None okur ve
     # arşivdeki verileri bir sonraki onayda düşer.
+    # Başlık: elle silinen/eklenen sütunu yakalamak için (`_sutun_haritasi`);
+    # tip: arşive özgü alan geri yazılırken biçimini korusun (`arsiv_semasi`).
     ws = wb.create_sheet(SEMA_SAYFASI)
-    ws.append(["anahtar", "sutun"])
+    ws.append(["anahtar", "sutun", "baslik", "tip"])
     for a in sorted(sema.tum_alanlar, key=lambda a: a.sutun):
-        ws.append([a.anahtar, a.sutun])
+        ws.append([a.anahtar, a.sutun, a.baslik, a.tip])
     ws.sheet_state = "hidden"
 
 

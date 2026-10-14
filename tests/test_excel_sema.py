@@ -63,7 +63,7 @@ def test_gomulu_sema_kaydirilmis_sutunlari_dogru_okur(tmp_path):
         c.value = None                       # başlık eşlemesi devre dışı
     sema = yeni.create_sheet(SEMA_SAYFASI)
     sema.append(["anahtar", "sutun"])
-    for anahtar, sutun in eski[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True):
+    for anahtar, sutun in eski[SEMA_SAYFASI].iter_rows(min_row=2, max_col=2, values_only=True):
         sema.append([anahtar, kayma.get(sutun, sutun)])
     yeni.save(yol)
 
@@ -172,3 +172,54 @@ def test_pasif_alanin_sutunu_ve_verisi_yeniden_yazimda_korunur(tmp_path):
     satirlar, _ = mevcut_verileri_oku(yol, sema=pasif)
     assert satirlar[0]["sira_no"] == 42
     assert load_workbook(yol)["Faturalar"].cell(row=2, column=4).value == 42
+
+
+# ── İnceleme 2: elle değiştirilen arşiv ──────────────────────────────────────
+
+def test_elle_silinen_sutundan_sonra_veriler_dogru_alanlarda_okunur(tmp_path):
+    """Kullanıcı Excel'de ortadan bir sütun sildi: sağdakiler sola kaydı ama
+    gizli `_Sema` eski numaraları gösteriyor. Kademe 1'e körü körüne güvenmek
+    her alanı komşusunun verisiyle dolduruyordu."""
+    s = _kullanici_semasi()
+    yol = str(tmp_path / "f.xlsx")
+    excel_olustur([dict(_satir(), tanim="Danışmanlık", siparis_no="SP-77")], yol, sema=s)
+
+    wb = load_workbook(yol)
+    wb["Faturalar"].delete_cols(5)          # Tanım
+    wb.save(yol)
+
+    satirlar, islenenmis = mevcut_verileri_oku(yol, sema=s)
+    r = satirlar[0]
+    assert r["tanim"] is None                # silinen alanın verisi yok, uydurulmaz
+    assert r["vergiler_dahil_tutar"] == 1180.0
+    assert r["kdv_haric_tutar"] == 1000.0
+    assert r["sirket_adi"] == "ACME A.Ş."
+    assert r["vkn"] == "1234567890"
+    assert r["siparis_no"] == "SP-77"
+    assert r["_teknik_bilgi"] == "Dijital"
+    assert r["dosya_yolu"] == r"C:\x\a.pdf"   # başlıksız gizli yol da kaydı
+    assert islenenmis == {"a.pdf"}
+
+
+def test_yalnizca_basligi_degistirilen_sutun_kaybolmaz(tmp_path):
+    """Hiçbir sütun yer değiştirmedi, kullanıcı yalnızca bir başlığı yeniden
+    adlandırdı: kademe 1 hâlâ doğru, başlık eşlemesine düşmek o alanı silerdi."""
+    yol = str(tmp_path / "f.xlsx")
+    excel_olustur([dict(_satir(), tanim="Danışmanlık")], yol)
+    wb = load_workbook(yol)
+    wb["Faturalar"].cell(row=1, column=5, value="Açıklama")
+    wb.save(yol)
+
+    assert mevcut_verileri_oku(yol)[0][0]["tanim"] == "Danışmanlık"
+
+
+def test_eski_iki_sutunlu_sema_sayfasi_okunmaya_devam_eder(tmp_path):
+    yol = str(tmp_path / "f.xlsx")
+    excel_olustur([_satir()], yol)
+    wb = load_workbook(yol)
+    wb[SEMA_SAYFASI].delete_cols(3, 10)      # yalnızca anahtar, sutun kalsın
+    wb.save(yol)
+
+    satirlar, islenenmis = mevcut_verileri_oku(yol)
+    assert satirlar[0]["sirket_adi"] == "ACME A.Ş."
+    assert islenenmis == {"a.pdf"}

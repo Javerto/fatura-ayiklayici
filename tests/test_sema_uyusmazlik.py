@@ -122,7 +122,7 @@ def test_arsive_ozgu_alanin_sutunu_ve_verisi_onaydan_sag_cikar(tmp_path):
     sutun = sip.sutun["siparis_no"]
     assert wb["Faturalar"].cell(1, sutun).value == "Sipariş No"
     assert wb["Faturalar"].cell(2, sutun).value == "SP-42"
-    gomulu = dict(wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True))
+    gomulu = dict(wb[SEMA_SAYFASI].iter_rows(min_row=2, max_col=2, values_only=True))
     assert gomulu["siparis_no"] == sutun
     # Bir sonraki onay da korur: değer arşivden yeniden okunuyor.
     assert mevcut_verileri_oku(cikti, sip)[0][0]["siparis_no"] == "SP-42"
