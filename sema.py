@@ -53,7 +53,7 @@ SISTEM_ALANLARI = [
 ]
 
 
-def _t(anahtar, etiket, tip, sutun, genislik, aciklama, ogrenilir=False):
+def _tohum_alani(anahtar, etiket, tip, sutun, genislik, aciklama, ogrenilir=False):
     return {"anahtar": anahtar, "etiket": etiket, "tip": tip, "sutun": sutun,
             "genislik": genislik, "cekirdek": anahtar in CEKIRDEK, "aktif": True,
             "zorunlu": anahtar in CEKIRDEK, "ogrenilir": ogrenilir,
@@ -64,28 +64,28 @@ def _t(anahtar, etiket, tip, sutun, genislik, aciklama, ogrenilir=False):
 # eski elle yazılmış `PROMPT_SABLON`'dan birebir taşındı. `sutun` numaraları eski
 # Excel dosyalarının düzenidir — asla yeniden numaralandırma.
 TOHUM = {"surum": SURUM, "alanlar": [
-    _t("fatura_no", "Fatura No", "metin", 2, 22,
+    _tohum_alani("fatura_no", "Fatura No", "metin", 2, 22,
        "fatura numarası — Türk e-fatura standardı: 3 karakter (büyük harf veya rakam) + 4 haneli yıl + 9 haneli sıra, toplam 16 karakter (örn: GIB2024000000001). Fazladan sıfır EKLEME."),
-    _t("fatura_tarihi", "Fatura Tarihi", "tarih", 3, 13,
+    _tohum_alani("fatura_tarihi", "Fatura Tarihi", "tarih", 3, 13,
        "GG.AA.YYYY formatında tarih"),
-    _t("sirket_adi", "Şirket Adı", "metin", 11, 31,
+    _tohum_alani("sirket_adi", "Şirket Adı", "metin", 11, 31,
        "faturayı kesen SATICI şirketin adı. Faturada iki şirket varsa ALICI değil SATICI olanı yaz.",
        ogrenilir=True),
-    _t("vkn", "VKN", "metin", 12, 14,
+    _tohum_alani("vkn", "VKN", "metin", 12, 14,
        "SATICI şirketin VKN'i (10-11 haneli). Faturada birden fazla VKN varsa SATICI olana ait olanı yaz."),
-    _t("vergi_dairesi", "Vergi Dairesi", "metin", 13, 22,
+    _tohum_alani("vergi_dairesi", "Vergi Dairesi", "metin", 13, 22,
        "satıcı şirketin vergi dairesi adı", ogrenilir=True),
-    _t("tanim", "Tanım", "metin", 5, 37,
+    _tohum_alani("tanim", "Tanım", "metin", 5, 37,
        "ilk kalem ya da ana hizmetin açıklaması"),
-    _t("toplam_miktar", "Toplam Adet", "sayi", 6, 8,
+    _tohum_alani("toplam_miktar", "Toplam Adet", "sayi", 6, 8,
        "toplam adet/miktar (sadece sayı, örnek: 7 veya 14.5)"),
-    _t("kdv_haric_tutar", "KDV Hariç Tutar", "sayi", 9, 16,
+    _tohum_alani("kdv_haric_tutar", "KDV Hariç Tutar", "sayi", 9, 16,
        "KDV hariç Mal/Hizmet Toplam Tutarı, TL cinsinden sayı. EUR ve TL varsa TL ver. Yoksa null"),
-    _t("vergiler_dahil_tutar", "Vergiler Dahil Tutar", "sayi", 7, 16,
+    _tohum_alani("vergiler_dahil_tutar", "Vergiler Dahil Tutar", "sayi", 7, 16,
        'Vergiler Dahil Toplam Tutar, TL cinsinden sayı. "Ödenecek Tutar(TL)" veya "Vergiler Dahil Toplam Tutar(TL)" satırını bul. EUR/TL karışıksa TL ver'),
-    _t("para_birimi", "Para Birimi", "metin", 8, 7,
+    _tohum_alani("para_birimi", "Para Birimi", "metin", 8, 7,
        "TL ya da yalnızca döviz varsa EUR veya USD"),
-    _t("sira_no", "Sıra No", "sayi", 4, 7,
+    _tohum_alani("sira_no", "Sıra No", "sayi", 4, 7,
        'yatırım teşvik belgesinin kaçıncı sıra nosu — SADECE şu kalıplardan birinde geçiyorsa al: "X sırasında KDV istisnası", "Yerli Liste X sırasında", "Sıra No: X kapsamında","Liste Y-x sıra numarasına istinaden". Diğer no alanlarını ASLA alma. Yoksa null'),
 ]}
 
@@ -109,6 +109,11 @@ class Sema:
         da bu listeyi gezer, böylece pasifin arşiv değerine dokunmaz.
         """
         return [(a.anahtar, a.etiket, a.tip) for a in self.alanlar if a.aktif]
+
+    @property
+    def aktif_anahtarlar(self) -> set[str]:
+        """Aktif (okunan, formda görünen) veri alanlarının anahtarları."""
+        return {a.anahtar for a in self.alanlar if a.aktif}
 
     @property
     def ogrenilen(self) -> list[str]:

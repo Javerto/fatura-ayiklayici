@@ -160,7 +160,7 @@ def veri_dogrula(veri: dict, baska_nolar: set[str] | None = None,
     formda olmadığından onun için uyarı üretilmez.
     """
     sema = sema or _sema.VARSAYILAN
-    aktif = {a.anahtar for a in sema.alanlar if a.aktif}
+    aktif = sema.aktif_anahtarlar
     uyarilar = []
 
     def ekle(alan, mesaj):

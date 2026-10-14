@@ -230,7 +230,7 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
     Sütunlar, başlıklar ve genişlikler `sema`dan gelir (verilmezse varsayılan).
     """
     sema = sema or _sema.VARSAYILAN
-    SUTUN = sema.sutun
+    sutun = sema.sutun
     sutun_bilgisi = sorted((a for a in sema.tum_alanlar if a.baslik),
                            key=lambda a: a.sutun)
     tarih_sutunlari = {a.sutun for a in sema.alanlar if a.tip == "tarih"}
@@ -255,18 +255,18 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
         c.font, c.fill, c.alignment, c.border = baslik_font, baslik_fill, orta, kenar
     ws.row_dimensions[1].height = 30
 
-    gizli_harf = get_column_letter(SUTUN["dosya_yolu_gizli"])
-    fn_hrf  = get_column_letter(SUTUN["fatura_no"])
-    ft_hrf  = get_column_letter(SUTUN["fatura_tarihi"])
-    vdt_hrf = get_column_letter(SUTUN["vergiler_dahil_tutar"])
-    kdv_hrf = get_column_letter(SUTUN["kdv_haric_tutar"])
-    tm_hrf  = get_column_letter(SUTUN["toplam_miktar"])
-    vt_hrf  = get_column_letter(SUTUN["vergi_tutari"])
-    kht_aktif = "kdv_haric_tutar" in {a.anahtar for a in sema.alanlar if a.aktif}
+    gizli_harf = get_column_letter(sutun["dosya_yolu_gizli"])
+    fn_hrf  = get_column_letter(sutun["fatura_no"])
+    ft_hrf  = get_column_letter(sutun["fatura_tarihi"])
+    vdt_hrf = get_column_letter(sutun["vergiler_dahil_tutar"])
+    kdv_hrf = get_column_letter(sutun["kdv_haric_tutar"])
+    tm_hrf  = get_column_letter(sutun["toplam_miktar"])
+    vt_hrf  = get_column_letter(sutun["vergi_tutari"])
+    kht_aktif = "kdv_haric_tutar" in sema.aktif_anahtarlar
 
     for ri, s in enumerate(satirlar, 2):
         zebra = zebra_fill if ri % 2 == 0 else None
-        ws.cell(row=ri, column=SUTUN["ft_formul"],
+        ws.cell(row=ri, column=sutun["ft_formul"],
                 value=f"=+{fn_hrf}{ri}&{ft_hrf}{ri}")
 
         veri_map = {a.sutun: s.get(a.anahtar, _bos(a)) for a in sema.alanlar}
@@ -274,7 +274,7 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
             c = ws.cell(row=ri, column=col, value=excel_guvenli(val))
             c.font, c.border = f10, kenar
             c.alignment = Alignment(vertical="center")
-            if col in (SUTUN["vergiler_dahil_tutar"], SUTUN["kdv_haric_tutar"]) and isinstance(val, (int, float)):
+            if col in (sutun["vergiler_dahil_tutar"], sutun["kdv_haric_tutar"]) and isinstance(val, (int, float)):
                 c.number_format = num_fmt
             if col in tarih_sutunlari and hasattr(val, "strftime"):
                 c.number_format = "DD.MM.YYYY"
@@ -284,19 +284,19 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
         # kdv_haric_tutar pasifse yeni satırda yoktur; formül vergiyi dahil
         # tutar kadar gösterirdi. Arşivde değeri olan eski satırda anlamlı, kalır.
         vergi_var = kht_aktif or s.get("kdv_haric_tutar") is not None
-        jc = ws.cell(row=ri, column=SUTUN["vergi_tutari"],
+        jc = ws.cell(row=ri, column=sutun["vergi_tutari"],
                      value=f"=+{vdt_hrf}{ri}-{kdv_hrf}{ri}" if vergi_var else None)
         jc.font, jc.border, jc.number_format = f10, kenar, num_fmt
         jc.alignment = Alignment(vertical="center")
         if zebra:
             jc.fill = zebra
 
-        ac = ws.cell(row=ri, column=SUTUN["ft_formul"])
+        ac = ws.cell(row=ri, column=sutun["ft_formul"])
         ac.font, ac.border = f10, kenar
         if zebra:
             ac.fill = zebra
 
-        lh = ws.cell(row=ri, column=SUTUN["dosya"])
+        lh = ws.cell(row=ri, column=sutun["dosya"])
         dosya_yolu = s.get("dosya_yolu", "")
         if dosya_yolu.lower().endswith(".pdf"):
             lh.value = (f'=HYPERLINK("file:///"&SUBSTITUTE({gizli_harf}{ri},'
@@ -313,12 +313,12 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
             lh.fill = zebra
 
         # Gizli sütun: tam dosya yolu — hyperlink bozulsa bile kod buradan okur
-        gc = ws.cell(row=ri, column=SUTUN["dosya_yolu_gizli"], value=dosya_yolu)
+        gc = ws.cell(row=ri, column=sutun["dosya_yolu_gizli"], value=dosya_yolu)
         gc.font = Font(name="Arial", size=1, color="FFFFFF")  # beyaz, 1pt — görünmez
         gc.alignment = Alignment(horizontal="center", vertical="center")
 
         # Kaynak sütunu: Dijital / OCR (PDF) veya XML
-        kc = ws.cell(row=ri, column=SUTUN["kaynak"], value=fatura_kaynak(s))
+        kc = ws.cell(row=ri, column=sutun["kaynak"], value=fatura_kaynak(s))
         kc.font, kc.border = f10, kenar
         kc.alignment = Alignment(horizontal="center", vertical="center")
         if zebra:
@@ -329,19 +329,19 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
     ws.column_dimensions[gizli_harf].hidden = True
 
     sr = len(satirlar) + 2
-    ws.cell(row=sr, column=SUTUN["fatura_no"], value="TOPLAM").font = fbold
+    ws.cell(row=sr, column=sutun["fatura_no"], value="TOPLAM").font = fbold
     for col, fml in [
-        (SUTUN["toplam_miktar"],        f"=SUM({tm_hrf}2:{tm_hrf}{sr-1})"),
-        (SUTUN["vergiler_dahil_tutar"], f"=SUM({vdt_hrf}2:{vdt_hrf}{sr-1})"),
-        (SUTUN["kdv_haric_tutar"],      f"=SUM({kdv_hrf}2:{kdv_hrf}{sr-1})"),
-        (SUTUN["vergi_tutari"],         f"=SUM({vt_hrf}2:{vt_hrf}{sr-1})"),
+        (sutun["toplam_miktar"],        f"=SUM({tm_hrf}2:{tm_hrf}{sr-1})"),
+        (sutun["vergiler_dahil_tutar"], f"=SUM({vdt_hrf}2:{vdt_hrf}{sr-1})"),
+        (sutun["kdv_haric_tutar"],      f"=SUM({kdv_hrf}2:{kdv_hrf}{sr-1})"),
+        (sutun["vergi_tutari"],         f"=SUM({vt_hrf}2:{vt_hrf}{sr-1})"),
     ]:
         c = ws.cell(row=sr, column=col, value=fml)
         c.font = fbold
-        if col in (SUTUN["vergiler_dahil_tutar"], SUTUN["kdv_haric_tutar"], SUTUN["vergi_tutari"]):
+        if col in (sutun["vergiler_dahil_tutar"], sutun["kdv_haric_tutar"], sutun["vergi_tutari"]):
             c.number_format = num_fmt
-    for col in range(1, max(SUTUN.values()) + 1):
-        if col == SUTUN["dosya_yolu_gizli"]:
+    for col in range(1, max(sutun.values()) + 1):
+        if col == sutun["dosya_yolu_gizli"]:
             continue
         c = ws.cell(row=sr, column=col)
         c.border, c.fill = kenar, toplam_fill

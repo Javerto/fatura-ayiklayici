@@ -13,7 +13,6 @@ import time
 
 import fatura
 import gemini
-import sema as _sema
 from extraction import (
     xml_den_veri_cek, pdf_den_veri_cek, pdf_text_ayikla,
     MAX_WORKERS, veri_dogrula, pdf_gecerli_mi,
@@ -132,8 +131,8 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         veri = kural_uygula(veri, kurallar, sema)
         # Pasif alan yeni faturada doldurulmaz — model ya da XML yine de
         # döndürse bile. Sütunu ve arşivdeki eski verisi korunur.
-        for a in (sema or _sema.VARSAYILAN).alanlar:
-            if not a.aktif:
+        for a in sema.alanlar:
+            if a.anahtar not in sema.aktif_anahtarlar:
                 veri.pop(a.anahtar, None)
         yeni_satirlar.append(veri)
         siradaki += 1
