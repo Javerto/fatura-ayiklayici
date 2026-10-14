@@ -246,6 +246,7 @@ async function rvOnayla() {
   if (c.dokunulmadi)
     bilgiSatiri("Tüm yeni faturalar hariç tutuldu, Excel'e dokunulmadı.");
   if (c.kural) bilgiSatiri(`${c.kural} firma için düzeltme kuralı kaydedildi.`);
+  if (c.kural_hatasi) bilgiSatiri(c.kural_hatasi, "warn");
 }
 
 async function rvIptal() {

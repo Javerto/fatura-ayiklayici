@@ -231,7 +231,7 @@ class Api:
                      "ogrenilebilir": sema.ogrenilebilir(a["anahtar"], a["tip"])}
                     for a in s.json()["alanlar"]],
                 "tipler": list(sema.TIPLER),
-                "sistem_basliklar": [a.baslik for a in sema.SISTEM_ALANLARI if a.baslik],
+                "sistem_basliklar": sema.SISTEM_BASLIKLARI,
                 "dosya_hatasi": hata,
                 "dosya_yolu": str(self._alanlar)}
 
@@ -453,12 +453,15 @@ class Api:
 
         self._cikti = self._review["cikti"]
         self._onizlemeyi_kapat()
-        kaydedilen = self._kurallari_ogren(yeni, hatirla, haric_kume)
+        kaydedilen, kural_hatasi = self._kurallari_ogren(yeni, hatirla, haric_kume)
         yazilan = len(nihai) - len(self._review["mevcut"])
         self._gecmis_kaydet(yazilan, len(self._atlanmis))
         self._review = None
-        return {"ok": True, "yazilan": yazilan, "kural": kaydedilen,
-                "cikti": self._cikti}
+        sonuc = {"ok": True, "yazilan": yazilan, "kural": kaydedilen,
+                 "cikti": self._cikti}
+        if kural_hatasi:
+            sonuc["kural_hatasi"] = kural_hatasi
+        return sonuc
 
     def review_iptal(self) -> dict:
         self._review = None
@@ -634,8 +637,13 @@ class Api:
                 "atlanan": len(payload["atlanmis"])}
 
     def _kurallari_ogren(self, satirlar: list, hatirla: list,
-                         haric: set) -> int:
-        """'Firma için hatırla' işaretli satırlardan VKN bazlı kural üretir."""
+                         haric: set) -> tuple[int, str | None]:
+        """'Firma için hatırla' işaretli satırlardan VKN bazlı kural üretir.
+
+        (kaydedilen sayı, yazılamadıysa Türkçe mesaj) döner. Koşu bitmiş,
+        pompa durmuş: mesaj log kuyruğuna değil onay sonucuna, oradan bilgi
+        satırına gider.
+        """
         kurallar = kurallari_oku(self._duzeltme)
         eklenen = 0
         for i in {int(x) for x in (hatirla or [])} - haric:
@@ -651,9 +659,10 @@ class Api:
             # kalır. TypeError/ValueError = JSON'a yazılamayan değer.
             try:
                 kurallari_yaz(self._duzeltme, kurallar)
-            except (OSError, TypeError, ValueError):
-                return 0
-        return eklenen
+            except (OSError, TypeError, ValueError) as e:
+                return 0, (f"Firma düzeltme kuralları kaydedilemedi ({e}). "
+                           "Excel yazıldı; kuralları bir sonraki onayda yeniden işaretleyin.")
+        return eklenen, None
 
     def _gecmis_kaydet(self, islenen: int, atlanan: int):
         kayit = {

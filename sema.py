@@ -51,6 +51,8 @@ SISTEM_ALANLARI = [
     Alan("dosya_yolu_gizli", 15),                       # gizli tam yol
     Alan("kaynak",           16, "Kaynak",       9),
 ]
+# Bir veri alanına etiket olarak verilemeyen başlıklar (`coz` ve editör).
+SISTEM_BASLIKLARI = [a.baslik for a in SISTEM_ALANLARI if a.baslik]
 
 
 def _tohum_alani(anahtar, etiket, tip, sutun, genislik, aciklama, ogrenilir=False):
@@ -193,7 +195,7 @@ def coz(ham) -> Sema:
     # başlıkları bir veri alanına verilemez — `_Sema`ya çift yazılır, başlık
     # eşleme kademesi yanlış sütunu okur, `_teknik_bilgi` kaybolur.
     sistem_anahtar = {a.anahtar for a in SISTEM_ALANLARI}
-    sistem_baslik = {a.baslik.casefold() for a in SISTEM_ALANLARI if a.baslik}
+    sistem_baslik = {b.casefold() for b in SISTEM_BASLIKLARI}
 
     girdiler = []
     for d in ham["alanlar"]:

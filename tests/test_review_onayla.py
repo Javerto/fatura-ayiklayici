@@ -144,5 +144,7 @@ def test_kural_yazilamazsa_onay_tamamlanir(api, tmp_path, monkeypatch, hata):
     sonuc = api.review_onayla({}, [], [0])
 
     assert sonuc["ok"] and sonuc["yazilan"] == 1 and sonuc["kural"] == 0
+    # Sessizce yutulmaz: arayüz bilgi satırına düşer (web/review.js).
+    assert "kaydedilemedi" in sonuc["kural_hatasi"]
     assert api._review is None
     assert len(mevcut_verileri_oku(cikti)[0]) == 1
