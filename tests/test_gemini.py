@@ -121,6 +121,16 @@ def test_yanittaki_retry_suresi_merdivenin_yerine_gecer(zaman):
     assert zaman.toplam_uyku == 44
 
 
+def test_cok_uzun_retry_suresinde_uyumaz_kota_hatasi_verir(zaman):
+    # Günlük kota dolunca Google saatler sonrasını söyler ("retry in 53216s");
+    # buna uyan uygulama hiçbir şey demeden 15 saat donmuş görünür.
+    with pytest.raises(InternetHatasi) as e:
+        _cagir(zaman, [Gecici("429 RESOURCE_EXHAUSTED, please retry in 53216s")])
+
+    assert "kota" in str(e.value).lower()
+    assert zaman.toplam_uyku == 0
+
+
 def test_denemeler_tukenince_kota_mesajiyla_biter(zaman):
     with pytest.raises(InternetHatasi) as e:
         _cagir(zaman, [Gecici("429 RESOURCE_EXHAUSTED")])

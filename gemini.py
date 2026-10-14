@@ -37,6 +37,9 @@ MAX_DENEME      = 5
 TIMEOUT_SANIYE  = 180
 THINKING_BUDGET = -1
 RPM_LIMIT       = 14   # dakikada max istek (limitin biraz altında güvenli taraf)
+# Sunucunun istediği bekleme bundan uzunsa beklenmez: günlük kota dolmuştur
+# ("retry in 53216s") ve uyumak uygulamayı saatlerce donmuş gösterir.
+MAX_BEKLEME     = 300
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Geçici sayılan (yeniden denenen) ve kalıcı sayılan hata imzaları. Sağlayıcı
@@ -145,11 +148,19 @@ class ModelIstemcisi:
             raise InternetHatasi("İşlem durduruldu.")
 
     def _geri_cekil(self, deneme: int, hata: Exception):
-        """Merdiven: 15/30/45/60/75 sn. Sunucu kendi süresini söylediyse o geçerli."""
+        """Merdiven: 15/30/45/60/75 sn. Sunucu kendi süresini söylediyse o geçerli
+        — `MAX_BEKLEME`'yi aşmadıkça."""
         sure = 15 * (deneme + 1)
         m = re.search(r"retry[^0-9]*([0-9]+)s", str(hata), re.IGNORECASE)
         if m:
             sure = int(m.group(1)) + 2
+        if sure > MAX_BEKLEME:
+            ne_kadar = (f"{round(sure / 3600)} saat" if sure >= 3600
+                        else f"{round(sure / 60)} dakika")
+            raise InternetHatasi(
+                f"API kotası doldu; Google yaklaşık {ne_kadar} beklemeyi "
+                "istiyor. Daha sonra tekrar başlatın; işlenen faturalar "
+                "tekrar gönderilmez.")
         self._bilgi(f"   ↻ Bağlantı hatası, {sure}s bekleniyor "
                     f"(deneme {deneme + 1}/{MAX_DENEME})...")
         # Saniye saniye uyunur: "Durdur"a basan kullanıcı 60 saniyenin
