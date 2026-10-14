@@ -348,7 +348,7 @@ tbody tr:hover{background:var(--card)}
    ═══════════════════════════════════════════════════════════════════ */
 .ico-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
 .rv .ed-cols{grid-template-columns:minmax(230px,300px) 1fr}
-.rv .ed-dosya{color:var(--err);margin-top:2px}
+.rv .ed-dosya{color:var(--err);margin-top:2px;white-space:pre-line}
 #edForm{max-width:720px}
 .ed-ad{color:var(--tx)!important;font-weight:550}
 .rvrow.e .mk{background:var(--err-bg);color:var(--err)}

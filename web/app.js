@@ -303,10 +303,8 @@ async function basla(retry) {
     $("btnBasla").disabled = false;
     $("btnRetry").disabled = !D.atlanan;
     if (cevap.hata === "api_key") apiKeyModal();
-    else if (cevap.sema_hatasi) {       // bozuk alanlar.json: editöre yönlendir
-      await bilgiModal("Alanlar okunamadı", cevap.hata);
-      editorAc();
-    }
+    // bozuk alanlar.json: editöre değil dosyaya yönlendir (bozukken Kaydet reddedilir)
+    else if (cevap.sema_hatasi) await bilgiModal("Alanlar okunamadı", cevap.hata);
     else bilgiSatiri(cevap.hata, "err");
     return;
   }

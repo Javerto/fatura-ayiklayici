@@ -162,6 +162,21 @@ def test_deneme_surerken_kaydedilmez(tmp_path):
     assert sema.oku(tmp_path / "alanlar.json").alanlar[0].etiket == "Fatura No"
 
 
+def test_bozuk_dosya_varken_kaydet_reddeder_ve_dosyaya_dokunmaz(tmp_path):
+    """Editör bozuk dosyada tohumu gösteriyor; Kaydet'e basmak kullanıcının
+    elle yazdığı (dosyada duran) tüm alan tanımlarını tohumla eziyordu."""
+    api = Api(kok=tmp_path)
+    alanlar = _alanlar(api)
+    yol = tmp_path / "alanlar.json"
+    yol.write_text('{"surum": 1, "alanlar": [{"etiket": "Sipariş No", "tip": "metin",}', "utf-8")
+    once = yol.read_text("utf-8")
+
+    o = api.sema_kaydet(alanlar)
+
+    assert str(yol) in o["hata"] and "silin" in o["hata"]
+    assert yol.read_text("utf-8") == once
+
+
 def test_kaydet_calisan_kosunun_semasini_degistirmez(tmp_path):
     """Gözden geçirme/onay o koşunun şemasıyla çalışır; yeni şema sonraki
     `basla`'da okunur."""

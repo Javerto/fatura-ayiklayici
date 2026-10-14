@@ -20,10 +20,12 @@ async function editorAc() {
   E.sistem = new Set(o.sistem_basliklar.map(b => b.toLowerCase()));
   E.secili = 0;
   E.degisti = false;
+  E.bozuk = !!o.dosya_hatasi;           // Kaydet kilitli: Python da reddeder
   const h = $("edDosyaHata");
-  h.hidden = !o.dosya_hatasi;
-  h.textContent = o.dosya_hatasi
-    ? `⚠ Alan dosyası okunamadı (${o.dosya_hatasi}). Varsayılan alanlar gösteriliyor; kaydederseniz dosya bunlarla değiştirilir.`
+  h.hidden = !E.bozuk;
+  h.textContent = E.bozuk
+    ? `⚠ Alan dosyası okunamadı (${o.dosya_hatasi}). Varsayılan alanlar gösteriliyor; kaydedilemez.\n` +
+      `Dosya: ${o.dosya_yolu}\nDosyayı düzeltin veya silin; silinirse varsayılan alanlarla yeniden oluşur.`
     : "";
   $("anaEkran").hidden = true;
   $("editor").hidden = false;
@@ -68,7 +70,7 @@ function edDurumTazele() {
     ? `✕ ${hatali} alanda kaydı engelleyen sorun var`
     : uyarili ? `⚠ ${uyarili} alanın açıklaması boş`
     : E.degisti ? "Kaydedilmemiş değişiklik var" : "";
-  $("edKaydet").disabled = hatali > 0 || !E.degisti;
+  $("edKaydet").disabled = E.bozuk || hatali > 0 || !E.degisti;
   return d;
 }
 

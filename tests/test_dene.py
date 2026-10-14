@@ -77,6 +77,19 @@ def test_dene_kayitli_semayla_tek_cagri_yapip_alanlari_dondurur(ortam):
     assert "sipariş numarası" in ortam.client.cagrilar[0][0]   # prompt kayıtlı şemadan
 
 
+def test_bozuk_semayla_deneme_yapilmaz(ortam):
+    """`basla` gibi: bozuk dosyada sessizce tohumla denemek, kullanıcıya
+    kendi alanlarının çalıştığını sandırır."""
+    yol = ortam.kok / "alanlar.json"
+    yol.write_text("{bozuk", "utf-8")
+
+    o = ortam.api.dene(ortam.pdf)
+
+    assert str(yol) in o["hata"] and o.get("sema_hatasi") is True
+    assert ortam.client.cagrilar == []
+    assert not ortam.api._deneniyor
+
+
 def test_dene_excele_ve_gecmise_yazmaz(ortam):
     once = {p.name for p in ortam.kok.iterdir()}
 

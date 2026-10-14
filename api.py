@@ -167,9 +167,7 @@ class Api:
             # alanları okunmaz ve onayla arşivden düşer. Sessizce devam etme.
             s, sema_hatasi = sema.oku_ayrintili(self._alanlar)
             if sema_hatasi:
-                return {"hata": f"Alan tanımları okunamadı ({sema_hatasi}). "
-                                "Alanlar ekranından alanları kontrol edip kaydedin.",
-                        "sema_hatasi": True}
+                return self._bozuk_sema(sema_hatasi)
 
             cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
             self._klasor = klasor
@@ -234,7 +232,8 @@ class Api:
                     for a in s.json()["alanlar"]],
                 "tipler": list(sema.TIPLER),
                 "sistem_basliklar": [a.baslik for a in sema.SISTEM_ALANLARI if a.baslik],
-                "dosya_hatasi": hata}
+                "dosya_hatasi": hata,
+                "dosya_yolu": str(self._alanlar)}
 
     def sema_kaydet(self, alanlar: list) -> dict:
         """Editördeki alan listesini (sırasıyla) `alanlar.json`'a yazar.
@@ -246,6 +245,11 @@ class Api:
         with self._baslatma_kilidi:
             if self._calisiyor or self._deneniyor:
                 return {"hata": "Bir işlem ya da deneme sürerken alanlar kaydedilemez."}
+            # Bozuk dosyada editör tohumu gösteriyor; kaydetmek dosyada duran
+            # (kullanıcının elle yazdığı) tanımları tohumla ezerdi.
+            sema_hatasi = sema.oku_ayrintili(self._alanlar)[1]
+            if sema_hatasi:
+                return self._bozuk_sema(sema_hatasi)
             try:
                 s = sema.coz({"surum": sema.SURUM,
                               "alanlar": self._editor_alanlari(alanlar)})
@@ -278,6 +282,11 @@ class Api:
         api_key = os.environ.get("GEMINI_API_KEY", "").strip()
         if not api_key:
             return {"hata": "api_key"}
+        # `basla` gibi: bozuk dosyada tohumla denemek kullanıcıya kendi
+        # alanlarının çalıştığını sandırır.
+        s, sema_hatasi = sema.oku_ayrintili(self._alanlar)
+        if sema_hatasi:
+            return self._bozuk_sema(sema_hatasi)
         # Kilit `basla` ile ortak: deneme ile koşu aynı kotayı harcar ve aynı
         # `_stop_event`'i paylaşır (Durdur ve pencere kapanışı ikisini de keser).
         with self._baslatma_kilidi:
@@ -286,12 +295,23 @@ class Api:
             self._deneniyor = True
             self._stop_event.clear()
         try:
-            return self._dene(yol, api_key)
+            return self._dene(yol, api_key, s)
         finally:
             self._deneniyor = False
 
-    def _dene(self, yol: str, api_key: str) -> dict:
-        s = sema.oku(self._alanlar)
+    def _bozuk_sema(self, sebep: str) -> dict:
+        """Bozuk `alanlar.json` için ortak ret: `basla`, `dene`, `sema_kaydet`.
+
+        Kullanıcı Kaydet'e değil dosyaya yönlendirilir — bozukken Kaydet
+        dosyayı tohumla ezerdi, bu yüzden o da reddediliyor.
+        """
+        return {"hata": f"Alan tanımları dosyası okunamadı ({sebep}).\n"
+                        f"Dosya: {self._alanlar}\n"
+                        "Dosyayı düzeltin veya silin; silinirse varsayılan "
+                        "alanlarla yeniden oluşur.",
+                "sema_hatasi": True}
+
+    def _dene(self, yol: str, api_key: str, s) -> dict:
         try:
             # `olustur` süreç ömürlü sınırlayıcıyı kullanır: kota anahtara ait.
             istemci = gemini.olustur(api_key, iptal=self._stop_event)

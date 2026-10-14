@@ -84,5 +84,7 @@ def test_bozuk_semayla_kosu_baslamaz(tmp_path, monkeypatch):
     sonuc = api.basla({"klasor": str(tmp_path), "cikti": "x"})
 
     assert sonuc.get("sema_hatasi") is True
-    assert "Alanlar" in sonuc["hata"]
+    # Kaydet'e değil dosyaya yönlendirir: bozukken Kaydet reddediliyor.
+    assert str(tmp_path / "alanlar.json") in sonuc["hata"]
+    assert "silin" in sonuc["hata"] and "kaydedin" not in sonuc["hata"]
     assert not calisan and not api._calisiyor
