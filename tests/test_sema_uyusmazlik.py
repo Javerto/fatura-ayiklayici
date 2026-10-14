@@ -100,8 +100,54 @@ def test_uyusmazlik_onayi_engellemez(tmp_path):
 
     sonuc = api.review_onayla({}, [], [])
     assert sonuc["ok"] and sonuc["yazilan"] == 1
-    # Onaylanan dosya aktif şemayla yazıldı; bir sonraki koşuda uyarı kalmaz.
-    assert sema_farki(cikti, api._sema) is None
+    # Arşive özgü sütun onaydan sağ çıkar, bu yüzden bilgi de sürer.
+    assert sema_farki(cikti, api._sema) == {"arsivde_fazla": ["Sipariş No"], "yeni": []}
+
+
+def test_arsive_ozgu_alanin_sutunu_ve_verisi_onaydan_sag_cikar(tmp_path):
+    """Başka şemayla yazılmış arşiv aktif şemayla onaylanınca, aktif şemada
+    olmayan sütun (başlığı, verisi, _Sema kaydı) sessizce siliniyordu."""
+    from api import Api
+    from excel_utils import mevcut_verileri_oku
+
+    cikti = str(tmp_path / "cikti.xlsx")
+    sip = _siparisli()
+    excel_olustur([{**_satir(), "siparis_no": "SP-42"}], cikti, sip)
+    api = Api(kok=tmp_path / "ayar")          # aktif şema: tohum, Sipariş No yok
+    api._review = _review_yuku(tmp_path, api._sema)
+
+    assert api.review_onayla({}, [], [])["ok"]
+
+    wb = load_workbook(cikti)
+    sutun = sip.sutun["siparis_no"]
+    assert wb["Faturalar"].cell(1, sutun).value == "Sipariş No"
+    assert wb["Faturalar"].cell(2, sutun).value == "SP-42"
+    gomulu = dict(wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True))
+    assert gomulu["siparis_no"] == sutun
+    # Bir sonraki onay da korur: değer arşivden yeniden okunuyor.
+    assert mevcut_verileri_oku(cikti, sip)[0][0]["siparis_no"] == "SP-42"
+
+
+def test_arsive_ozgu_alanin_sutunu_doluysa_kaybolmaz_tasinir(tmp_path):
+    """Aktif şemadaki yeni bir alan arşive özgü sütunun numarasını almışsa
+    arşiv verisi o sütunun altında ezilmez, boş bir sütuna taşınır."""
+    from excel_utils import arsiv_semasi
+
+    cikti = str(tmp_path / "cikti.xlsx")
+    excel_olustur([{**_satir(), "siparis_no": "SP-42"}], cikti, _siparisli())
+    ham = sema.VARSAYILAN.json()
+    ham["alanlar"].append({"etiket": "Proje", "tip": "metin"})
+    aktif = sema.coz(ham)                      # Proje de 17. sütunu alır
+    assert aktif.sutun["proje"] == _siparisli().sutun["siparis_no"]
+
+    s = arsiv_semasi(cikti, aktif)
+
+    assert s.sutun["proje"] == 17 and s.sutun["siparis_no"] == 18
+    excel_olustur([{**_satir(), "siparis_no": "SP-42", "proje": "P1"}],
+                  cikti, s)
+    ws = load_workbook(cikti)["Faturalar"]
+    assert (ws.cell(1, 18).value, ws.cell(2, 18).value) == ("Sipariş No", "SP-42")
+    assert ws.cell(2, 17).value == "P1"
 
 
 def test_worker_semalar_ayniysa_uyusmazlik_yok(tmp_path):

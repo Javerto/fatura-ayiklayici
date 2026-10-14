@@ -131,14 +131,10 @@ def _sutun_haritasi(wb, ws) -> dict[str, int]:
        başlıksız sütunlar (gizli yol) sabit numarasında kalır.
     3. Bugünkü sabit sütun numaraları — en eski dosyalar.
     """
-    if SEMA_SAYFASI in wb.sheetnames:
-        harita = {}
-        for anahtar, sutun in wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True):
-            if anahtar and isinstance(sutun, int) and sutun > 0:
-                harita[str(anahtar)] = sutun
-        if "fatura_no" in harita:
-            return harita
-        # ponytail: bozuk/boş şema sayfası → alt kademelere düş, hata verme
+    harita = _gomulu_sema(wb)
+    if harita:
+        return harita
+    # ponytail: bozuk/boş şema sayfası → alt kademelere düş, hata verme
 
     # Başlıklar tohumunkiler: kullanıcı etiketi değiştirse de eski dosya tanınır.
     baslik_anahtar = {a.baslik: a.anahtar for a in TOHUM_ALANLARI if a.baslik}
@@ -149,31 +145,78 @@ def _sutun_haritasi(wb, ws) -> dict[str, int]:
     return dict(TOHUM_SUTUN)
 
 
-def sema_farki(cikti: str, sema=None) -> dict | None:
-    """Arşivin gömülü şeması `sema`dan farklıysa hangi alanların ayrıştığı.
+def _gomulu_sema(wb) -> dict[str, int] | None:
+    """`_Sema` sayfasının beyanı (anahtar → sütun); yoksa ya da bozuksa None.
 
-    `{"arsivde_fazla": [başlık...], "yeni": [etiket...]}`; dosya yoksa, gömülü
-    şeması yoksa (eski dosya) ya da şemalar aynıysa None. Koşu düzeyinde bir
-    bilgidir, işlemi durdurmaz — okunamayan dosya da None döner.
+    Tek ayrıştırma noktası: okuma kademesi, uyuşmazlık uyarısı ve arşiv
+    şeması aynı satırları aynı denetimle görsün.
     """
-    sema = sema or _sema.VARSAYILAN
+    if SEMA_SAYFASI not in wb.sheetnames:
+        return None
+    harita = {str(k): s for k, s in wb[SEMA_SAYFASI].iter_rows(min_row=2, values_only=True)
+              if k and isinstance(s, int) and s > 0}
+    return harita if "fatura_no" in harita else None
+
+
+def _arsiv_beyani(cikti: str):
+    """(gömülü şema, {sütun: başlık}) — dosya yok/eski/okunamıyorsa None."""
     if not os.path.exists(cikti):
         return None
     try:
         wb = load_workbook(cikti, read_only=True)
         try:
-            if SEMA_SAYFASI not in wb.sheetnames:
+            gomulu = _gomulu_sema(wb)
+            if gomulu is None:
                 return None
-            gomulu = {str(k): s for k, s in wb[SEMA_SAYFASI].iter_rows(
-                min_row=2, values_only=True) if k}
             ws = wb["Faturalar"] if "Faturalar" in wb.sheetnames else wb.worksheets[0]
             basliklar = {i: v for i, v in enumerate(
                 next(ws.iter_rows(max_row=1, values_only=True), ()), 1)}
         finally:
             wb.close()
     except Exception:
-        return None   # ponytail: uyarı bilgi amaçlı; okuma hatasını mevcut_verileri_oku yakalar
+        return None   # ponytail: bilgi amaçlı; okuma hatasını mevcut_verileri_oku yakalar
+    return gomulu, basliklar
 
+
+def arsiv_semasi(cikti: str, sema=None):
+    """`sema` + arşivin `_Sema`sında olup `sema`da hiç olmayan alanlar (pasif).
+
+    Bu alanlar okunur ve kendi başlıklarıyla geri yazılır: başka bir şemayla
+    yazılmış arşiv onaylanınca sütunları sessizce silinmesin. Sütunu aktif
+    şemada başka bir alana verilmişse ilk boş sütuna taşınır (ezilmez).
+    """
+    sema = sema or _sema.VARSAYILAN
+    beyan = _arsiv_beyani(cikti)
+    if not beyan:
+        return sema
+    gomulu, basliklar = beyan
+    dolu = set(sema.sutun.values())
+    ekler = []
+    for k, s in sorted(gomulu.items(), key=lambda x: x[1]):
+        if k in sema.sutun:
+            continue
+        if s in dolu:
+            s = max(dolu) + 1
+        dolu.add(s)
+        baslik = str(basliklar.get(gomulu[k]) or k)
+        ekler.append(_sema.Alan(k, s, baslik, _sema.VARSAYILAN_GENISLIK,
+                                etiket=baslik, aktif=False))
+    return _sema.Sema(sema.alanlar + ekler) if ekler else sema
+
+
+def sema_farki(cikti: str, sema=None) -> dict | None:
+    """Arşivin gömülü şeması `sema`dan farklıysa hangi alanların ayrıştığı.
+
+    `{"arsivde_fazla": [başlık...], "yeni": [etiket...]}`; dosya yoksa, gömülü
+    şeması yoksa (eski dosya) ya da şemalar aynıysa None. Koşu düzeyinde bir
+    bilgidir, işlemi durdurmaz — okunamayan dosya da None döner. Arşivde fazla
+    olan sütunlar korunur (`arsiv_semasi`); bu yüzden o kısım kalıcı bir bilgidir.
+    """
+    sema = sema or _sema.VARSAYILAN
+    beyan = _arsiv_beyani(cikti)
+    if not beyan:
+        return None
+    gomulu, basliklar = beyan
     aktif = {a.anahtar: a for a in sema.tum_alanlar}
     # Arşive özgü alanın etiketi şemada yok; kullanıcı anahtarı değil başlığı tanır.
     fazla = [str(basliklar.get(s) or k) for k, s in gomulu.items() if k not in aktif]

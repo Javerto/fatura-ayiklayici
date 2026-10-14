@@ -49,7 +49,7 @@ function rvSemaFarki(f) {
   if (!f) return;
   const parcalar = [];
   if (f.arsivde_fazla.length)
-    parcalar.push(`arşivde olup şemada olmayan ${f.arsivde_fazla.length} sütun (${f.arsivde_fazla.join(", ")})`);
+    parcalar.push(`şu anki alanlarda olmayan ${f.arsivde_fazla.length} sütun korunuyor (${f.arsivde_fazla.join(", ")}) — eski verisi durur, yeni faturalarda boş kalır`);
   if (f.yeni.length)
     parcalar.push(`eklenecek ${f.yeni.length} yeni sütun (${f.yeni.join(", ")})`);
   el.textContent = `⚠ Bu Excel farklı bir alan setiyle oluşturulmuş: ${parcalar.join(" · ")}`;

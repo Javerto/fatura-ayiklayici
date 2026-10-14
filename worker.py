@@ -20,7 +20,7 @@ from extraction import (
 )
 from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
                      ModelHatasi, ExcelHatasi)
-from excel_utils import mevcut_verileri_oku, sema_farki
+from excel_utils import arsiv_semasi, mevcut_verileri_oku, sema_farki
 from duzeltme import kural_uygula
 
 
@@ -72,6 +72,10 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             return
 
     CIKTI = os.path.join(klasor, cikti_adi)
+    # Arşive özgü (aktif şemada olmayan) sütunlar pasif alan olarak eklenir:
+    # okunur ve onayda geri yazılır. Uyuşmazlık bilgisi aktif şemaya göre.
+    aktif_sema = sema
+    sema = arsiv_semasi(CIKTI, sema)
 
     if retry_dosyalar is not None:
         islenmemis_pdf = [d for d in retry_dosyalar if not d.lower().endswith(".xml")]
@@ -161,7 +165,9 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
                 "cikti":    CIKTI,
                 "kesildi":  kesildi,
                 # Koşu düzeyinde: arşiv başka bir alan setiyle yazılmışsa.
-                "sema_farki": sema_farki(CIKTI, sema),
+                "sema_farki": sema_farki(CIKTI, aktif_sema),
+                # Excel bu şemayla yazılmalı: arşive özgü sütunlar dahil.
+                "sema":     sema,
             }))
         else:
             log("info", "Kaydedilecek yeni fatura bulunamadı.")

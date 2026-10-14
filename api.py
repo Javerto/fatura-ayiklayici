@@ -425,7 +425,9 @@ class Api:
                     "cikti": self._mevcut_cikti()}
 
         try:
-            excel_olustur(nihai, self._review["cikti"], self._sema)
+            # Worker'ın arşiv şeması: arşive özgü sütunlar da yazılsın.
+            excel_olustur(nihai, self._review["cikti"],
+                          self._review.get("sema") or self._sema)
         except ExcelHatasi as e:
             return {"hata": str(e)}          # pencere açık kalsın, düzenlemeler kaybolmasın
 
