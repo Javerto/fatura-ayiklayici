@@ -150,6 +150,46 @@ def test_arsive_ozgu_alanin_sutunu_doluysa_kaybolmaz_tasinir(tmp_path):
     assert ws.cell(2, 17).value == "P1"
 
 
+def _vadeli_arsiv(cikti):
+    ham = sema.VARSAYILAN.json()
+    ham["alanlar"].append({"etiket": "Vade", "tip": "tarih"})
+    vadeli = sema.coz(ham)
+    excel_olustur([{**_satir(), "vade": datetime.datetime(2024, 2, 15)}], cikti, vadeli)
+    return vadeli.sutun["vade"]
+
+
+def _yeniden_yaz_tohumla(cikti):
+    """Aktif şema tohum (Vade yok): arşiv okunup arşiv şemasıyla geri yazılır."""
+    from excel_utils import arsiv_semasi, mevcut_verileri_oku
+    s = arsiv_semasi(cikti, sema.VARSAYILAN)
+    satirlar, _ = mevcut_verileri_oku(cikti, s)
+    excel_olustur(satirlar, cikti, s)
+
+
+def test_arsive_ozgu_tarih_sutunu_bicimini_korur(tmp_path):
+    """arsiv_semasi tipi None ekliyordu: DD.MM.YYYY yerine yyyy-mm-dd h:mm:ss."""
+    cikti = str(tmp_path / "cikti.xlsx")
+    sutun = _vadeli_arsiv(cikti)
+
+    _yeniden_yaz_tohumla(cikti)
+
+    c = load_workbook(cikti)["Faturalar"].cell(2, sutun)
+    assert c.value == datetime.datetime(2024, 2, 15)
+    assert c.number_format == "DD.MM.YYYY"
+
+
+def test_tipsiz_eski_sema_sayfasinda_tip_hucreden_cikarilir(tmp_path):
+    cikti = str(tmp_path / "cikti.xlsx")
+    sutun = _vadeli_arsiv(cikti)
+    wb = load_workbook(cikti)
+    wb[SEMA_SAYFASI].delete_cols(3, 10)      # eski biçim: yalnızca anahtar, sutun
+    wb.save(cikti)
+
+    _yeniden_yaz_tohumla(cikti)
+
+    assert load_workbook(cikti)["Faturalar"].cell(2, sutun).number_format == "DD.MM.YYYY"
+
+
 def test_worker_semalar_ayniysa_uyusmazlik_yok(tmp_path):
     excel_olustur([_satir()], str(tmp_path / "cikti.xlsx"), sema.VARSAYILAN)
     assert _review_yuku(tmp_path, sema.VARSAYILAN)["sema_farki"] is None

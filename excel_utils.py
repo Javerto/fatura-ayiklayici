@@ -192,8 +192,10 @@ def _gomulu_sema(wb) -> dict[str, tuple] | None:
     return beyan if "fatura_no" in beyan else None
 
 
-def _arsiv_beyani(cikti: str):
-    """(gömülü şema, {sütun: başlık}) — dosya yok/eski/okunamıyorsa None."""
+def _arsiv_beyani(cikti: str, ornek=False):
+    """(gömülü şema, {sütun: başlık}, {sütun: ilk dolu değer}) — dosya
+    yok/eski/okunamıyorsa None. Örnek değerler yalnızca `ornek=True` ise okunur
+    (tüm sayfayı gezer)."""
     if not os.path.exists(cikti):
         return None
     try:
@@ -203,38 +205,54 @@ def _arsiv_beyani(cikti: str):
             if gomulu is None:
                 return None
             ws = wb["Faturalar"] if "Faturalar" in wb.sheetnames else wb.worksheets[0]
-            basliklar = {i: v for i, v in enumerate(
-                next(ws.iter_rows(max_row=1, values_only=True), ()), 1)}
+            satirlar = ws.iter_rows(values_only=True)
+            basliklar = dict(enumerate(next(satirlar, ()), 1))
+            ornekler = {}
+            for r in (satirlar if ornek else ()):
+                for i, v in enumerate(r, 1):
+                    if v is not None:
+                        ornekler.setdefault(i, v)
         finally:
             wb.close()
     except Exception:
         return None   # ponytail: bilgi amaçlı; okuma hatasını mevcut_verileri_oku yakalar
-    return gomulu, basliklar
+    return gomulu, basliklar, ornekler
+
+
+def _tip_cikar(deger):
+    """Tip taşımayan eski `_Sema` için: hücre değerinden tarih/sayı, yoksa None."""
+    if hasattr(deger, "strftime"):
+        return "tarih"
+    if isinstance(deger, (int, float)) and not isinstance(deger, bool):
+        return "sayi"
+    return None
 
 
 def arsiv_semasi(cikti: str, sema=None):
     """`sema` + arşivin `_Sema`sında olup `sema`da hiç olmayan alanlar (pasif).
 
-    Bu alanlar okunur ve kendi başlıklarıyla geri yazılır: başka bir şemayla
-    yazılmış arşiv onaylanınca sütunları sessizce silinmesin. Sütunu aktif
-    şemada başka bir alana verilmişse ilk boş sütuna taşınır (ezilmez).
+    Bu alanlar okunur ve kendi başlık ve tipleriyle geri yazılır: başka bir
+    şemayla yazılmış arşiv onaylanınca sütunları sessizce silinmesin, tarih
+    sütunu biçimini kaybetmesin. Sütunu aktif şemada başka bir alana
+    verilmişse en sağdaki dolu sütunun hemen sağına taşınır (ezilmez).
     """
     sema = sema or _sema.VARSAYILAN
-    beyan = _arsiv_beyani(cikti)
+    beyan = _arsiv_beyani(cikti, ornek=True)
     if not beyan:
         return sema
-    gomulu, basliklar = beyan
+    gomulu, basliklar, ornekler = beyan
     dolu = set(sema.sutun.values())
     ekler = []
-    for k, (s, b, _) in sorted(gomulu.items(), key=lambda x: x[1][0]):
+    for k, (s, b, t) in sorted(gomulu.items(), key=lambda x: x[1][0]):
         if k in sema.sutun:
             continue
         baslik = str(b or basliklar.get(s) or k)
+        tip = t or _tip_cikar(ornekler.get(s))
         if s in dolu:
             s = max(dolu) + 1
         dolu.add(s)
         ekler.append(_sema.Alan(k, s, baslik, _sema.VARSAYILAN_GENISLIK,
-                                etiket=baslik, aktif=False))
+                                etiket=baslik, tip=tip, aktif=False))
     return _sema.Sema(sema.alanlar + ekler) if ekler else sema
 
 
@@ -250,7 +268,7 @@ def sema_farki(cikti: str, sema=None) -> dict | None:
     beyan = _arsiv_beyani(cikti)
     if not beyan:
         return None
-    gomulu, basliklar = beyan
+    gomulu, basliklar, _ = beyan
     aktif = {a.anahtar: a for a in sema.tum_alanlar}
     # Arşive özgü alanın etiketi şemada yok; kullanıcı anahtarı değil başlığı tanır.
     fazla = [str(b or basliklar.get(s) or k) for k, (s, b, _) in gomulu.items()
