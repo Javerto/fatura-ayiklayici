@@ -229,6 +229,7 @@ tbody tr:hover{background:var(--card)}
 .rv{position:fixed;inset:0;background:var(--panel);display:flex;
     flex-direction:column;z-index:50}
 .rv .top{padding:14px 20px}
+.rv .rv-sema{color:var(--warn);margin-top:2px}
 .rv .pill{font-size:11.5px;font-weight:600;padding:5px 11px;border-radius:99px;
           white-space:nowrap}
 .rv .pill.warn{background:var(--warn-bg);color:var(--warn);
@@ -341,3 +342,29 @@ tbody tr:hover{background:var(--card)}
 
 /* Hata mesajları çok satırlı gelebilir (dosya yolu + sebep) */
 .modal .aciklama{white-space:pre-line}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ALAN EDİTÖRÜ — .rv iskeletini (tam ekran, üst/alt çubuk) paylaşır
+   ═══════════════════════════════════════════════════════════════════ */
+.ico-btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+.rv .ed-cols{grid-template-columns:minmax(230px,300px) 1fr}
+.rv .ed-dosya{color:var(--err);margin-top:2px;white-space:pre-line}
+#edForm{max-width:720px}
+.ed-ad{color:var(--tx)!important;font-weight:550}
+.rvrow.e .mk{background:var(--err-bg);color:var(--err)}
+.f textarea,.f select{width:100%;background:var(--card);border:1px solid var(--line);
+  border-radius:8px;padding:9px 11px;color:var(--tx);font-size:13px;
+  font-family:inherit;outline:0;transition:.15s;min-width:0}
+.f textarea{resize:vertical;line-height:1.5;min-height:90px}
+.f select:disabled{opacity:.6}
+.f textarea:focus,.f select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--focus)}
+.f.bad textarea{border-color:var(--warn-line);background:var(--warn-bg)}
+.f.hata input{border-color:var(--err);background:var(--err-bg)}
+.f .msg.err{color:var(--err)}
+.ipucu{font-size:11.5px;color:var(--dim);margin-top:6px;line-height:1.5}
+.learn+.learn{margin-top:10px}
+.ed-alt{margin-top:18px;display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.ed-durum{font-size:12px;color:var(--dim)}
+.ed-uyari{color:var(--warn);font-size:11.5px;margin-top:3px}
+.ed-durum.warn{color:var(--warn)}
+.ed-durum.err{color:var(--err)}

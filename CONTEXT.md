@@ -7,10 +7,36 @@ verirken önce buraya bak; buradaki bir terim bulanıklaşırsa burada keskinle�
 ## Alan terimleri
 
 **Fatura satırı** — Tek bir faturadan çıkarılan alanlar kümesi (fatura no, tarih,
-şirket, VKN, tutarlar, kaynak dosya yolu). Taşıyıcısı düz bir `dict`; şeması
-`fatura.ALANLAR` tablosunda: Excel sütunu, form etiketi/tipi ve öğrenilirlik tek
-yerde durur, `SUTUN`/`DUZENLENEBILIR_ALANLAR`/`OGRENILEN_ALANLAR` ondan türer.
-Türetilen değerler (`kaynak`, `dosya_adi`) de aynı modülde.
+şirket, VKN, tutarlar, kaynak dosya yolu). Taşıyıcısı düz bir `dict`; hangi
+alanları taşıdığını **Şema** söyler. Türetilen değerler (`kaynak`, `dosya_adi`)
+`fatura.py`'de.
+
+**Şema** (`sema.Sema`) — Faturadan hangi alanların çıkarılacağının tek gerçek
+kaynağı. Bir veri dosyasıdır (`alanlar.json`; frozen modda AppData, değilse
+proje kökü), ilk açılışta gömülü tohumdan yazılır, sonrası hep dosyadan okunur.
+Model promptu, Excel sütunları/başlıkları/genişlikleri, gözden geçirme formu ve
+öğrenilen alanlar ondan **türer** — prompt ile tablo ayrışamaz. Alan başına:
+`anahtar` (etiketten bir kez türetilir, asla değişmez), `etiket`, `tip`
+(`metin`/`tarih`/`sayi`), `sutun` (sistem atar, yeniler sona), `cekirdek`,
+`aktif`, `zorunlu`, `ogrenilir`, `aciklama` (modele giden metin). Kodda bir
+**değer** olarak dolaşır: fonksiyonlar `sema=None` alır, verilmezse
+`sema.VARSAYILAN` (tohum). Dosyayı yalnızca `Api` okur. Arşivin kendi gömülü
+şeması (`_Sema` sayfası) ayrı bir şeydir: o Excel'in hangi düzenle yazıldığını
+söyler.
+
+**Çekirdek alan** — Pasife alınamayan alan: `fatura_no`, `fatura_tarihi`,
+`sirket_adi`, `vkn`, `vergiler_dahil_tutar`, `para_birimi` (`sema.CEKIRDEK`).
+Özet sayfası, Excel formülleri ve gözden geçirme kartı bunların anlamına
+dayanır. Kendi gömülü doğrulama kuralları vardır (VKN biçimi, 16 karakter
+fatura no, örtük KDV oranı, mükerrer). Kısıt `sema.coz`'da denetlenir: çekirdeği
+pasif şema reddedilir (`ValueError`). `kdv_haric_tutar` bilinçli olarak
+çekirdek dışıdır.
+
+**Pasif alan** — `aktif: false` olan alan; bir alanı "kaldırmak" budur, gerçek
+silme yoktur. Prompt'a girmez, formda görünmez, yeni faturada doldurulmaz
+(worker düşürür), uyarı üretmez — ama **Excel sütunu ve arşivdeki eski verisi
+korunur**. Çekirdek dışı aktif alanlar yalnızca `zorunlu` bayrağı (boşsa uyarı)
+ve tip dönüşüm hatasıyla denetlenir.
 
 **Kaynak** — Bir fatura satırının verisinin nereden geldiği: `Dijital` (PDF'in
 gömülü metin katmanı), `OCR` (PDF görsele çevrilip modele gönderildi) veya `XML`

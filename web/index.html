@@ -17,6 +17,7 @@
     </div>
     <div class="sp"></div>
     <button class="ico-btn" id="btnKey" title="API anahtarı">🔑</button>
+    <button class="ico-btn" id="btnAlanlar" title="Alanlar">☰</button>
     <button class="ico-btn" id="btnGecmis" title="Geçmiş">🕐</button>
     <div class="tema-wrap" id="temaWrap">
       <button class="ico-btn" id="btnTema" title="Tema">◐</button>
@@ -100,6 +101,7 @@
     <div style="min-width:0">
       <h1>Faturaları Gözden Geçir</h1>
       <div class="sub" id="rvAlt">Onaylayana kadar Excel'e hiçbir şey yazılmaz</div>
+      <div class="sub rv-sema" id="rvSema" hidden></div>
     </div>
     <div class="sp"></div>
     <div class="pill ok" id="rvTemiz">✓ 0 temiz</div>
@@ -158,8 +160,50 @@
   </div>
 </div>
 
+<!-- ═══ ALAN (ŞEMA) EDİTÖRÜ ═══ -->
+<div class="rv" id="editor" hidden>
+  <div class="top">
+    <div style="min-width:0">
+      <h1>Alanlar</h1>
+      <div class="sub">Faturadan hangi bilgilerin çıkarılacağı · Kaydet'e basana kadar hiçbir değişiklik geçerli olmaz</div>
+      <div class="sub ed-dosya" id="edDosyaHata" hidden></div>
+    </div>
+  </div>
+
+  <div class="cols ed-cols">
+    <div class="col">
+      <div class="col-head">
+        <span class="lbl" id="edSayi">0 alan</span>
+        <div class="sp"></div>
+        <button class="btn-ghost" id="edEkle" style="padding:4px 9px;font-size:11px">+ Alan ekle</button>
+      </div>
+      <div class="list" id="edListe"></div>
+    </div>
+
+    <div class="col">
+      <div class="col-head">
+        <span class="lbl">Alan ayrıntısı</span>
+        <div class="sp"></div>
+        <button class="zbtn" id="edYukari" title="Yukarı taşı">▲</button>
+        <button class="zbtn" id="edAsagi" title="Aşağı taşı">▼</button>
+      </div>
+      <div class="rvform" id="edForm"></div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <span class="ed-durum" id="edDurum"></span>
+    <div class="sp"></div>
+    <!-- Alt çubukta, alan kolonunda değil: deneme seçili alanı değil tüm kayıtlı şemayı sınar -->
+    <button class="btn-sec" id="edDene" title="Kayıtlı alanlarla tek bir faturayı okur; Excel'e yazmaz">Bir faturada dene…</button>
+    <button class="btn-sec" id="edKapat">Vazgeç</button>
+    <button class="btn-primary" id="edKaydet">Kaydet</button>
+  </div>
+</div>
+
 <script src="tema.js"></script>
 <script src="app.js"></script>
 <script src="review.js"></script>
+<script src="editor.js"></script>
 </body>
 </html>

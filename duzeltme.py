@@ -7,9 +7,10 @@ Saf mantık (tkinter/Excel'siz, test edilebilir). Kurallar JSON'da tutulur:
 import json
 import os
 
-# Firma kimliğine ait, faturadan faturaya değişmeyen alanlar (fatura.ALANLAR'da
+# Firma kimliğine ait, faturadan faturaya değişmeyen alanlar (şemada
 # ogrenilir=True). para_birimi bilinçli olarak dışarıda: aynı firma TL/EUR kesebilir.
-from fatura import OGRENILEN_ALANLAR
+import sema as _sema
+from fatura import OGRENILEN_ALANLAR  # noqa: F401 (varsayılan şema; dışa açık)
 
 
 def kurallari_oku(yol) -> dict:
@@ -42,21 +43,21 @@ def kurallari_yaz(yol, kurallar: dict) -> None:
         raise
 
 
-def kural_uygula(satir: dict, kurallar: dict) -> dict:
-    """satır'ın vkn'si bir kuralla eşleşirse OGRENILEN_ALANLAR'ı geçersiz
+def kural_uygula(satir: dict, kurallar: dict, sema=None) -> dict:
+    """satır'ın vkn'si bir kuralla eşleşirse şemanın öğrenilen alanlarını geçersiz
     kılınmış bir KOPYA döndürür; eşleşme yoksa kopyayı olduğu gibi döndürür."""
     yeni = dict(satir)
     vkn = str(satir.get("vkn") or "").strip()
     kural = kurallar.get(vkn) if vkn else None
     if kural:
-        for alan in OGRENILEN_ALANLAR:
+        for alan in (sema or _sema.VARSAYILAN).ogrenilen:
             deger = kural.get(alan)
             if deger:
                 yeni[alan] = deger
     return yeni
 
 
-def kural_ekle(kurallar: dict, vkn: str, alanlar: dict) -> dict:
+def kural_ekle(kurallar: dict, vkn: str, alanlar: dict, sema=None) -> dict:
     """Yeni düzeltmeyi kurallara birleştirip güncel KOPYA döndürür.
 
     Boş/None değerler atlanır. vkn boşsa veya hiçbir öğrenilen alan dolu
@@ -67,7 +68,7 @@ def kural_ekle(kurallar: dict, vkn: str, alanlar: dict) -> dict:
     if not vkn:
         return guncel
     profil = dict(guncel.get(vkn, {}))
-    for alan in OGRENILEN_ALANLAR:
+    for alan in (sema or _sema.VARSAYILAN).ogrenilen:
         deger = alanlar.get(alan)
         if isinstance(deger, str):
             deger = deger.strip()

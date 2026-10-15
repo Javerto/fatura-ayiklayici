@@ -30,6 +30,7 @@ function reviewAc(o) {
   $("rvAlt").textContent = o.kesildi
     ? "İşlem yarıda kesildi — Onaylayana kadar Excel'e hiçbir şey yazılmaz"
     : "Onaylayana kadar Excel'e hiçbir şey yazılmaz";
+  rvSemaFarki(o.sema_farki);
   $("anaEkran").hidden = true;
   $("review").hidden = false;
   document.body.style.overflow = "hidden";
@@ -38,6 +39,20 @@ function reviewAc(o) {
   R.secili = ilkUyarili >= 0 ? ilkUyarili : 0;
   rvListeCiz();
   rvSatirSec(R.secili);
+}
+
+// Koşu düzeyinde uyarı: arşiv başka bir alan setiyle yazılmış. Bir satıra ait
+// değil, o yüzden (alan, mesaj) listesine değil üst şeride yazılır.
+function rvSemaFarki(f) {
+  const el = $("rvSema");
+  el.hidden = !f;
+  if (!f) return;
+  const parcalar = [];
+  if (f.arsivde_fazla.length)
+    parcalar.push(`şu anki alanlarda olmayan ${f.arsivde_fazla.length} sütun korunuyor (${f.arsivde_fazla.join(", ")}) — eski verisi durur, yeni faturalarda boş kalır`);
+  if (f.yeni.length)
+    parcalar.push(`eklenecek ${f.yeni.length} yeni sütun (${f.yeni.join(", ")})`);
+  el.textContent = `⚠ Bu Excel farklı bir alan setiyle oluşturulmuş: ${parcalar.join(" · ")}`;
 }
 
 function rvKapat() {
@@ -88,8 +103,10 @@ function rvSatirSec(i) {
   const hatali = new Set(s.uyarilar.map(u => u[0]));
   const etiket = Object.fromEntries(R.alanlar.map(a => [a[0], a[1]]));
   const gruplanan = new Set(RV_GRUP.flatMap(g => g[1]));
-  const gruplar = RV_GRUP.concat(
-    [["Diğer", R.alanlar.map(a => a[0]).filter(a => !gruplanan.has(a))]]);
+  // Grup sabit, grup İÇİ sıra şemanın sırası: editörde sıra değişince form da değişsin.
+  const sirali = R.alanlar.map(a => a[0]);
+  const gruplar = RV_GRUP.map(([b, g]) => [b, sirali.filter(a => g.includes(a))]).concat(
+    [["Diğer", sirali.filter(a => !gruplanan.has(a))]]);
 
   $("rvForm").innerHTML = gruplar.filter(([, alanlar]) => alanlar.length).map(
     ([baslik, alanlar]) => `<div class="grp"><span class="lbl">${baslik}</span>
@@ -229,6 +246,7 @@ async function rvOnayla() {
   if (c.dokunulmadi)
     bilgiSatiri("Tüm yeni faturalar hariç tutuldu, Excel'e dokunulmadı.");
   if (c.kural) bilgiSatiri(`${c.kural} firma için düzeltme kuralı kaydedildi.`);
+  if (c.kural_hatasi) bilgiSatiri(c.kural_hatasi, "warn");
 }
 
 async function rvIptal() {

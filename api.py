@@ -22,11 +22,14 @@ import webview
 from dotenv import load_dotenv, set_key
 
 import fatura
+import gemini
+import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
-from extraction import veri_dogrula
-from hatalar import ExcelHatasi
-from review import (DUZENLENEBILIR_ALANLAR, form_satira_uygula, nihai_satirlar,
+from extraction import pdf_den_veri_cek, veri_dogrula
+from hatalar import (APIKeyHatasi, ExcelHatasi, InternetHatasi, ModelHatasi,
+                     PDFHatasi)
+from review import (form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
 from worker import is_listesi, worker
 
@@ -76,6 +79,10 @@ class Api:
         self._env      = kok / ".env"
         self._gecmis   = kok / "gecmis.json"
         self._duzeltme = kok / "duzeltmeler.json"
+        self._alanlar  = kok / "alanlar.json"
+        # İlk açılışta dosya tohumdan yazılır. Koşu başlarken yeniden okunur;
+        # gözden geçirme ve onay o koşunun şemasıyla çalışır.
+        self._sema = sema.oku(self._alanlar)
         self._pencere = None
         self._log_q = queue.Queue()
         self._stop_event = threading.Event()
@@ -85,6 +92,7 @@ class Api:
         self._baslangic = 0.0
         self._review = None            # onay bekleyen worker çıktısı
         self._calisiyor = False        # bir worker sürüyor mu
+        self._deneniyor = False        # editörde bir "Dene" sürüyor mu
         self._baslatma_kilidi = threading.Lock()   # `basla` kontrol-ve-ata
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
@@ -147,7 +155,7 @@ class Api:
         # bayrağı thread başlatıldıktan sonra set etmek iki çağrının da
         # guard'ı geçmesine izin veriyordu.
         with self._baslatma_kilidi:
-            if self._calisiyor:
+            if self._calisiyor or self._deneniyor:
                 return {"hata": "Zaten bir işlem sürüyor."}
             api_key = os.environ.get("GEMINI_API_KEY", "").strip()
             if not api_key:
@@ -155,6 +163,11 @@ class Api:
             klasor = (ayarlar.get("klasor") or "").strip()
             if not klasor or not os.path.isdir(klasor):
                 return {"hata": "Lütfen geçerli bir klasör seçin."}
+            # Bozuk şemayla koşmak = tohumla koşmak: kullanıcının kendi
+            # alanları okunmaz ve onayla arşivden düşer. Sessizce devam etme.
+            s, sema_hatasi = sema.oku_ayrintili(self._alanlar)
+            if sema_hatasi:
+                return self._bozuk_sema(sema_hatasi)
 
             cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
             self._klasor = klasor
@@ -164,6 +177,7 @@ class Api:
             self._stop_event.clear()
             self._log_q = queue.Queue()
             self._calisiyor = True
+            self._sema = s
 
             retry = ayarlar.get("retry") or None
             threading.Thread(
@@ -171,7 +185,8 @@ class Api:
                 args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
                 kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
                         "kurallar": kurallari_oku(self._duzeltme),
-                        "retry_dosyalar": retry},
+                        "retry_dosyalar": retry,
+                        "sema": self._sema},
                 daemon=True,
             ).start()
             threading.Thread(target=self._pompa, daemon=True).start()
@@ -198,6 +213,161 @@ class Api:
             os.startfile(self._cikti)
             return True
         return False
+
+    # ── Şema editörü ─────────────────────────────────────────────────
+
+    def sema_oku(self) -> dict:
+        """Editörün açılış verisi: dosyadaki şema, sütun numaraları hariç.
+
+        `anahtar` yalnızca kimlik olarak gider (kaydederken alanı eşlemek
+        için); arayüz onu göstermez.
+        """
+        if self._calisiyor:
+            return {"hata": "Bir işlem sürerken alanlar düzenlenemez."}
+        s, hata = sema.oku_ayrintili(self._alanlar)
+        return {"alanlar": [
+                    {**{k: a[k] for k in ("anahtar", "etiket", "tip", "aciklama",
+                                          "cekirdek", "aktif", "zorunlu", "ogrenilir")},
+                     "ogrenilebilir": sema.ogrenilebilir(a["anahtar"], a["tip"])}
+                    for a in s.json()["alanlar"]],
+                "tipler": list(sema.TIPLER),
+                "sistem_basliklar": sema.SISTEM_BASLIKLARI,
+                "dosya_hatasi": hata,
+                "dosya_yolu": str(self._alanlar)}
+
+    def sema_kaydet(self, alanlar: list) -> dict:
+        """Editördeki alan listesini (sırasıyla) `alanlar.json`'a yazar.
+
+        Çalışan koşunun şeması (`self._sema`) değişmez; yeni şema bir sonraki
+        `basla()`'da okunur. Kayıt kilidi `basla` ile ortak: kontrol ile yazma
+        arasında bir koşu başlamasın.
+        """
+        with self._baslatma_kilidi:
+            if self._calisiyor or self._deneniyor:
+                return {"hata": "Bir işlem ya da deneme sürerken alanlar kaydedilemez."}
+            # Bozuk dosyada editör tohumu gösteriyor; kaydetmek dosyada duran
+            # (kullanıcının elle yazdığı) tanımları tohumla ezerdi.
+            sema_hatasi = sema.oku_ayrintili(self._alanlar)[1]
+            if sema_hatasi:
+                return self._bozuk_sema(sema_hatasi)
+            try:
+                s = sema.coz({"surum": sema.SURUM,
+                              "alanlar": self._editor_alanlari(alanlar)})
+                sema.yaz(self._alanlar, s)
+            except (ValueError, OSError) as e:
+                return {"hata": f"Kaydedilemedi: {e}"}
+        return {"ok": True}
+
+    def dene_sec(self) -> str:
+        """Denenecek PDF'i seçtirir (son klasörden başlar); vazgeçilirse boş."""
+        secim = self._pencere.create_file_dialog(
+            webview.FileDialog.OPEN, directory=self._klasor or "",
+            file_types=("PDF faturalar (*.pdf)",))
+        if not secim:
+            return ""
+        return secim[0] if isinstance(secim, (list, tuple)) else secim
+
+    def dene(self, yol: str) -> dict:
+        """Tek bir PDF'i KAYITLI şemayla modele gönderip çıkan alanları döndürür.
+
+        Excel'e ve geçmişe hiçbir şey yazılmaz. Worker kullanılmıyor: o eşi
+        olan XML'i modelsiz okur (açıklama denenmemiş olur) ve arşivi okur
+        (bozuk bir Excel denemeyi engellerdi). Öğrenilen firma kuralları da
+        uygulanmaz — kullanıcı açıklamasının modelden ne çıkardığını görmeli.
+        """
+        # JS bir güven sınırı: yol arayüzden gelir.
+        if not (isinstance(yol, str) and yol.lower().endswith(".pdf")
+                and os.path.isfile(yol)):
+            return {"hata": "Denemek için bir PDF fatura seçin."}
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if not api_key:
+            return {"hata": "api_key"}
+        # `basla` gibi: bozuk dosyada tohumla denemek kullanıcıya kendi
+        # alanlarının çalıştığını sandırır.
+        s, sema_hatasi = sema.oku_ayrintili(self._alanlar)
+        if sema_hatasi:
+            return self._bozuk_sema(sema_hatasi)
+        # Kilit `basla` ile ortak: deneme ile koşu aynı kotayı harcar ve aynı
+        # `_stop_event`'i paylaşır (Durdur ve pencere kapanışı ikisini de keser).
+        with self._baslatma_kilidi:
+            if self._calisiyor or self._deneniyor:
+                return {"hata": "Zaten bir işlem ya da deneme sürüyor."}
+            self._deneniyor = True
+            self._stop_event.clear()
+        try:
+            return self._dene(yol, api_key, s)
+        finally:
+            self._deneniyor = False
+
+    def _bozuk_sema(self, sebep: str) -> dict:
+        """Bozuk `alanlar.json` için ortak ret: `basla`, `dene`, `sema_kaydet`.
+
+        Kullanıcı Kaydet'e değil dosyaya yönlendirilir — bozukken Kaydet
+        dosyayı tohumla ezerdi, bu yüzden o da reddediliyor.
+        """
+        return {"hata": f"Alan tanımları dosyası okunamadı ({sebep}).\n"
+                        f"Dosya: {self._alanlar}\n"
+                        "Dosyayı düzeltin veya silin; silinirse varsayılan "
+                        "alanlarla yeniden oluşur.",
+                "sema_hatasi": True}
+
+    def _dene(self, yol: str, api_key: str, s) -> dict:
+        try:
+            # `olustur` süreç ömürlü sınırlayıcıyı kullanır: kota anahtara ait.
+            istemci = gemini.olustur(api_key, iptal=self._stop_event)
+            satir = pdf_den_veri_cek(yol, istemci,
+                                     float(os.environ.get("KALITE", "1.5")), sema=s)
+        except (APIKeyHatasi, PDFHatasi) as e:
+            return {"hata": str(e)}
+        except InternetHatasi as e:
+            return {"hata": "Deneme durduruldu." if self._stop_event.is_set()
+                    else str(e)}
+        except ModelHatasi:
+            return {"hata": "Model okunabilir bir yanıt vermedi. Tekrar deneyin; "
+                            "sürerse alan açıklamalarını sadeleştirin."}
+        except Exception as e:
+            return {"hata": f"Beklenmedik hata — {type(e).__name__}: {e}"}
+        degerler = satir_form_degerleri(satir, s)
+        return {"dosya": fatura.dosya_adi(satir),
+                "kaynak": fatura.kaynak(satir),
+                "alanlar": [[a, e, degerler[a]] for a, e, _ in s.duzenlenebilir],
+                "uyarilar": veri_dogrula(satir, sema=s)}
+
+    def _editor_alanlari(self, alanlar) -> list[dict]:
+        """Editörden gelen listeyi mevcut dosyayla birleştirip ham şemaya çevirir.
+
+        JS bir güven sınırı: sütun, çekirdek ve genişlik hiçbir zaman arayüzden
+        alınmaz; mevcut alanın tipi değiştirilemez (aynı Excel sütununda metin
+        ve sayı karışır); mevcut bir alan listeden düşemez (silmek = pasife
+        almak — düşen alanın sütunu yeni bir alana verilebilirdi).
+        """
+        if not isinstance(alanlar, list):
+            raise ValueError("alan listesi bekleniyordu")
+        mevcut = {a["anahtar"]: a for a in
+                  sema.oku(self._alanlar).json()["alanlar"]}
+        ham, gorulen = [], set()
+        for d in alanlar:
+            if not isinstance(d, dict):
+                raise ValueError("geçersiz alan")
+            anahtar = d.get("anahtar")
+            if anahtar:
+                if anahtar not in mevcut or anahtar in gorulen:
+                    raise ValueError("bilinmeyen ya da yinelenen alan")
+                gorulen.add(anahtar)
+                a = dict(mevcut[anahtar])
+                if d.get("tip", a["tip"]) != a["tip"]:
+                    raise ValueError(f"“{a['etiket']}” alanının tipi değiştirilemez")
+            else:                       # yeni alan: anahtar ve sütunu coz atar
+                a = {"tip": d.get("tip")}
+            a.update(etiket=d.get("etiket"), aciklama=str(d.get("aciklama") or ""),
+                     aktif=bool(d.get("aktif", True)),
+                     zorunlu=bool(d.get("zorunlu", False)),
+                     ogrenilir=bool(d.get("ogrenilir", False)))
+            ham.append(a)
+        eksik = set(mevcut) - gorulen
+        if eksik:
+            raise ValueError("listeden alan eksik (kaldırmak için pasife alın)")
+        return ham
 
     # ── Gözden geçirme ekranı ────────────────────────────────────────
 
@@ -240,8 +410,8 @@ class Api:
         satir = self._satir(i)
         if not satir:
             return []
-        return veri_dogrula(form_satira_uygula(satir, form),
-                            self._baska_nolar(haric_i=int(i)))
+        return veri_dogrula(form_satira_uygula(satir, form, self._sema),
+                            self._baska_nolar(haric_i=int(i)), self._sema)
 
     def review_onayla(self, duzenlemeler: dict, haric: list,
                       hatirla: list) -> dict:
@@ -261,7 +431,7 @@ class Api:
             except (TypeError, ValueError):
                 continue
             if 0 <= i < len(yeni):
-                yeni[i] = form_satira_uygula(yeni[i], form)
+                yeni[i] = form_satira_uygula(yeni[i], form, self._sema)
 
         haric_kume = {int(x) for x in (haric or [])}
         nihai = nihai_satirlar(self._review["mevcut"], yeni, haric_kume)
@@ -275,18 +445,23 @@ class Api:
                     "cikti": self._mevcut_cikti()}
 
         try:
-            excel_olustur(nihai, self._review["cikti"])
+            # Worker'ın arşiv şeması: arşive özgü sütunlar da yazılsın.
+            excel_olustur(nihai, self._review["cikti"],
+                          self._review.get("sema") or self._sema)
         except ExcelHatasi as e:
             return {"hata": str(e)}          # pencere açık kalsın, düzenlemeler kaybolmasın
 
         self._cikti = self._review["cikti"]
         self._onizlemeyi_kapat()
-        kaydedilen = self._kurallari_ogren(yeni, hatirla, haric_kume)
+        kaydedilen, kural_hatasi = self._kurallari_ogren(yeni, hatirla, haric_kume)
         yazilan = len(nihai) - len(self._review["mevcut"])
         self._gecmis_kaydet(yazilan, len(self._atlanmis))
         self._review = None
-        return {"ok": True, "yazilan": yazilan, "kural": kaydedilen,
-                "cikti": self._cikti}
+        sonuc = {"ok": True, "yazilan": yazilan, "kural": kaydedilen,
+                 "cikti": self._cikti}
+        if kural_hatasi:
+            sonuc["kural_hatasi"] = kural_hatasi
+        return sonuc
 
     def review_iptal(self) -> dict:
         self._review = None
@@ -445,8 +620,8 @@ class Api:
             yol = str(satir.get("dosya_yolu") or "")
             satirlar.append({
                 "i":        i,
-                "form":     satir_form_degerleri(satir),
-                "uyarilar": veri_dogrula(satir, baska_nolar),
+                "form":     satir_form_degerleri(satir, self._sema),
+                "uyarilar": veri_dogrula(satir, baska_nolar, self._sema),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
                 "kaynak":   fatura.kaynak(satir),
@@ -454,30 +629,40 @@ class Api:
         return {"t": "review", "satirlar": satirlar,
                 # Alan adı/etiketleri Python'dan gelir; arayüz yalnızca
                 # gruplamayı bilir, yeni alan eklenirse kendiliğinden görünür.
-                "alanlar": [list(a) for a in DUZENLENEBILIR_ALANLAR],
+                "alanlar": [list(a) for a in self._sema.duzenlenebilir],
                 "mevcut_sayi": len(payload["mevcut"]),
                 "kesildi": payload.get("kesildi", False),
+                # Koşu düzeyinde uyarı; satırların (alan, mesaj) sözleşmesinin dışında.
+                "sema_farki": payload.get("sema_farki"),
                 "atlanan": len(payload["atlanmis"])}
 
     def _kurallari_ogren(self, satirlar: list, hatirla: list,
-                         haric: set) -> int:
-        """'Firma için hatırla' işaretli satırlardan VKN bazlı kural üretir."""
+                         haric: set) -> tuple[int, str | None]:
+        """'Firma için hatırla' işaretli satırlardan VKN bazlı kural üretir.
+
+        (kaydedilen sayı, yazılamadıysa Türkçe mesaj) döner. Koşu bitmiş,
+        pompa durmuş: mesaj log kuyruğuna değil onay sonucuna, oradan bilgi
+        satırına gider.
+        """
         kurallar = kurallari_oku(self._duzeltme)
         eklenen = 0
         for i in {int(x) for x in (hatirla or [])} - haric:
             if i >= len(satirlar):
                 continue
             vkn = str(satirlar[i].get("vkn") or "").strip()
-            alanlar = ogrenilecek_alanlar(satirlar[i])
+            alanlar = ogrenilecek_alanlar(satirlar[i], self._sema)
             if vkn and alanlar:
-                kurallar = kural_ekle(kurallar, vkn, alanlar)
+                kurallar = kural_ekle(kurallar, vkn, alanlar, self._sema)
                 eklenen += 1
         if eklenen:
+            # Excel bu noktada yazılmış: hata JS'e kaçarsa onay akışı yarıda
+            # kalır. TypeError/ValueError = JSON'a yazılamayan değer.
             try:
                 kurallari_yaz(self._duzeltme, kurallar)
-            except OSError:
-                return 0
-        return eklenen
+            except (OSError, TypeError, ValueError) as e:
+                return 0, (f"Firma düzeltme kuralları kaydedilemedi ({e}). "
+                           "Excel yazıldı; kuralları bir sonraki onayda yeniden işaretleyin.")
+        return eklenen, None
 
     def _gecmis_kaydet(self, islenen: int, atlanan: int):
         kayit = {

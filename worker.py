@@ -19,7 +19,7 @@ from extraction import (
 )
 from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
                      ModelHatasi, ExcelHatasi)
-from excel_utils import mevcut_verileri_oku
+from excel_utils import arsiv_semasi, mevcut_verileri_oku, sema_farki
 from duzeltme import kural_uygula
 
 
@@ -45,11 +45,13 @@ def is_listesi(klasor: str) -> tuple[list[str], list[str]]:
 
 def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
            stop_event: threading.Event, retry_dosyalar: list | None = None,
-           zoom: float = 1.5, kurallar: dict | None = None, istemci=None):
+           zoom: float = 1.5, kurallar: dict | None = None, istemci=None,
+           sema=None):
     """Fatura işleme döngüsü — ayrı thread'de çalışır.
 
     `istemci` verilmezse gerçek Gemini istemcisi kurulur; testler kendi
-    sahtelerini geçirerek tüm döngüyü ağa çıkmadan çalıştırır.
+    sahtelerini geçirerek tüm döngüyü ağa çıkmadan çalıştırır. `sema` alan
+    setidir (prompt, tipler, öğrenilen alanlar, arşivden okunan alanlar).
     """
 
     def log(tag, mesaj):
@@ -69,13 +71,17 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             return
 
     CIKTI = os.path.join(klasor, cikti_adi)
+    # Arşive özgü (aktif şemada olmayan) sütunlar pasif alan olarak eklenir:
+    # okunur ve onayda geri yazılır. Uyuşmazlık bilgisi aktif şemaya göre.
+    aktif_sema = sema
+    sema = arsiv_semasi(CIKTI, sema)
 
     if retry_dosyalar is not None:
         islenmemis_pdf = [d for d in retry_dosyalar if not d.lower().endswith(".xml")]
         islenmemis_xml = [d for d in retry_dosyalar if d.lower().endswith(".xml")]
         toplam = len(islenmemis_pdf) + len(islenmemis_xml)
         try:
-            mevcut_satirlar, _ = mevcut_verileri_oku(CIKTI)
+            mevcut_satirlar, _ = mevcut_verileri_oku(CIKTI, sema)
         except ExcelHatasi as e:
             log("critical", str(e))
             log_q.put(("done", ([], 0, [])))
@@ -94,7 +100,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             return
 
         try:
-            mevcut_satirlar, islenenmis = mevcut_verileri_oku(CIKTI)
+            mevcut_satirlar, islenenmis = mevcut_verileri_oku(CIKTI, sema)
         except ExcelHatasi as e:
             log("critical", str(e))
             log_q.put(("done", ([], 0, [])))
@@ -122,11 +128,16 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
 
     def islendi(veri):
         nonlocal siradaki
-        veri = kural_uygula(veri, kurallar)
+        veri = kural_uygula(veri, kurallar, sema)
+        # Pasif alan yeni faturada doldurulmaz — model ya da XML yine de
+        # döndürse bile. Sütunu ve arşivdeki eski verisi korunur.
+        for a in sema.alanlar:
+            if a.anahtar not in sema.aktif_anahtarlar:
+                veri.pop(a.anahtar, None)
         yeni_satirlar.append(veri)
         siradaki += 1
         log_q.put(("progress", (siradaki, toplam)))
-        uyarilar = veri_dogrula(veri)
+        uyarilar = veri_dogrula(veri, sema=sema)
         dosya_adi = fatura.dosya_adi(veri, "bilinmiyor")
         # Süre yalnızca arayüz içindir; Excel'e sızmasın diye pop ile alınır.
         log_q.put(("fatura", {
@@ -152,6 +163,10 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
                 "uyarilar": uyari_listesi,
                 "cikti":    CIKTI,
                 "kesildi":  kesildi,
+                # Koşu düzeyinde: arşiv başka bir alan setiyle yazılmışsa.
+                "sema_farki": sema_farki(CIKTI, aktif_sema),
+                # Excel bu şemayla yazılmalı: arşive özgü sütunlar dahil.
+                "sema":     sema,
             }))
         else:
             log("info", "Kaydedilecek yeni fatura bulunamadı.")
@@ -203,7 +218,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             log_q.put(("isleniyor", {"dosya": dosya_adi, "tip": tip_etiketi}))
 
             try:
-                return ("ok", sureli(pdf_den_veri_cek(dosya, istemci, zoom,
+                return ("ok", sureli(pdf_den_veri_cek(dosya, istemci, zoom, sema=sema,
                                                       metin=metin), t0))
             except APIKeyHatasi as e:
                 api_hata.set()
