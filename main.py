@@ -8,9 +8,7 @@ Kullanım:
     python main.py
 """
 
-import os
 import pathlib
-import socket
 import sys
 
 import webview
@@ -45,25 +43,6 @@ def _webview2_uyarisi(hata: Exception):
         print(mesaj)
 
 
-def webview_ayarlari() -> dict:
-    """`webview.start` ayarları: EXE'de oturum diske yazılmaz.
-
-    Geliştirmede portal girişi yeniden açılışta sorulmasın diye profil kalıcıdır.
-    Klasör repo dışında: içindeki çerezler commit'e giremesin.
-    """
-    if getattr(sys, "frozen", False):
-        return {}
-    profil = (pathlib.Path(os.environ.get("LOCALAPPDATA", pathlib.Path.home()))
-              / "FaturaAyiklayici" / "gelistirme-profili")
-    profil.mkdir(parents=True, exist_ok=True)
-    # Kalıcı profilde pywebview sabit port (42001) kullanır; o portu tutan eski bir
-    # süreç varsa pencere ona bağlanır ve arayüz sessizce ölü kalır.
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-    return {"private_mode": False, "storage_path": str(profil), "http_port": port}
-
-
 def main():
     api = Api()
     # Pencere referansı `_` önekiyle saklanmalı: pywebview, arayüze açacağı
@@ -81,7 +60,7 @@ def main():
     api._pencere = pencere
     pencere.events.closing += api._pencere_kapaniyor
     try:
-        webview.start(**webview_ayarlari())
+        webview.start()
     except Exception as e:          # en sık nedeni: WebView2 kurulu değil
         _webview2_uyarisi(e)
         raise SystemExit(1)

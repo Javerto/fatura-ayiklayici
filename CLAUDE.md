@@ -105,7 +105,7 @@ python -m pytest -k fatura_no           # isim filtresiyle
 - **`duzeltmeler.json`** – VKN bazlı öğrenen düzeltme kuralları. Frozen modda `%APPDATA%\FaturaAyiklayici`, değilse proje klasöründe.
 - **`alanlar.json`** – Şema (bkz. `sema.py`, `CONTEXT.md`). İlk açılışta tohumdan yazılır; aynı konum kuralı. Gitignore'da.
 - **`faturalar.xlsx`** – Example output file (can be deleted).
-- **eLogo oturumu** – Token diske yazılmaz; `Api._elogo_oturum` aynı açılışta yeniden kullanır, iş hatayla biterse unutur. Yalnız geliştirmede (`main.webview_ayarlari`) WebView2 profili `%LOCALAPPDATA%\FaturaAyiklayici\gelistirme-profili` içinde kalıcıdır, portal çerezi yeniden açılışta girişi atlatabilir; EXE'de bu kapalıdır. Klasörü silmek oturumu sıfırlar.
+- **eLogo oturumu** – Token diske yazılmaz; `Api._elogo_oturum` aynı açılışta yeniden kullanır, iş hatayla biterse unutur. Kalıcı WebView2 profili denendi, işe yaramadı: portalın giriş çerezi oturumluk, uygulama kapanınca siliniyor ve giriş ekranında "beni hatırla" yok. Yeniden açılışta giriş istenmesi bu yüzden beklenen davranış.
 
 ### Data‑safety rules (learned the hard way — a code review found all of these)
 - **Never read the invoice sheet via `wb.active`.** Excel stores the last active tab; if the user

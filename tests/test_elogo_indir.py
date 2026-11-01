@@ -553,23 +553,3 @@ def test_oturum_nesnesi_tokeni_gostermez(api, monkeypatch):
     api._elogo_giris()
     assert "gizli" not in repr(api._elogo_oturum)
     assert "gizli" not in repr(vars(api))
-
-
-# ── Geliştirme profili ───────────────────────────────────────────────
-
-def test_exede_oturum_diske_yazilmaz(monkeypatch):
-    import main
-    monkeypatch.setattr(main.sys, "frozen", True, raising=False)
-    assert main.webview_ayarlari() == {}
-
-
-def test_gelistirme_profili_kalici_ve_repo_disinda(monkeypatch, tmp_path):
-    import main
-    monkeypatch.delattr(main.sys, "frozen", raising=False)
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    ayar = main.webview_ayarlari()
-    assert ayar["private_mode"] is False
-    profil = pathlib.Path(ayar["storage_path"])
-    assert profil.is_dir() and tmp_path in profil.parents
-    assert pathlib.Path.cwd() not in profil.parents
-    assert ayar["http_port"] > 0              # sabit porta düşmesin
