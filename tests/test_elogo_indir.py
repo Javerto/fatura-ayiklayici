@@ -7,7 +7,7 @@ import time
 import pytest
 
 import elogo_indir
-from elogo_indir import indir, numaralari_ayristir, oturum_coz
+from elogo_indir import indir, numara_ozeti, numaralari_ayristir, oturum_coz
 from hatalar import ElogoHatasi, ElogoOturumHatasi
 
 ORNEK_XML = pathlib.Path("tests/fixtures/ornek_fatura.xml").read_bytes()
@@ -68,6 +68,23 @@ def test_numaralar_kirpilir_tekillenir_uzun_olan_gecersiz():
 def test_duzeltme_uzunluk_kontrolunden_once_uygulanir():
     # Modelin eklediği baştaki sıfırı düzelten aynı kural: 17 → 16 karakter.
     assert numaralari_ayristir("GIB20240000000001") == (["GIB2024000000001"], [])
+
+
+@pytest.mark.parametrize("ayrac", ["\n", "\r\n", "\t", " ", ",", ";", ", "])
+def test_excel_ve_elle_yazilan_ayraclar_bolunur(ayrac):
+    assert numaralari_ayristir(f"AB{ayrac}CD")[0] == ["AB", "CD"]
+
+
+def test_numara_ozeti_indirmeyle_ayni_kurali_kullanir():
+    metin = "A1\na1, B2 " + "X" * 17
+    assert numara_ozeti(metin) == {"aranacak": 2, "tekrar": 1, "gecersiz": ["X" * 17]}
+    assert numara_ozeti("  ,\n") == {"aranacak": 0, "tekrar": 0, "gecersiz": []}
+
+
+def test_numara_ozeti_duzeltmeyi_sayar():
+    # Baştaki fazla sıfır düzeltilir: 17 karakter geçersiz sayılmaz, tekrar olur.
+    assert numara_ozeti("GIB20240000000001 GIB2024000000001") == {
+        "aranacak": 1, "tekrar": 1, "gecersiz": []}
 
 
 # ── Oturum ───────────────────────────────────────────────────────────
@@ -553,3 +570,65 @@ def test_oturum_nesnesi_tokeni_gostermez(api, monkeypatch):
     api._elogo_giris()
     assert "gizli" not in repr(api._elogo_oturum)
     assert "gizli" not in repr(vars(api))
+
+
+# ── Önce giriş ───────────────────────────────────────────────────────
+
+def test_baglan_giris_bitince_ok_ve_kilidi_birakir(api, monkeypatch):
+    kilitli = []
+
+    def giris():
+        kilitli.append(api._calisiyor)
+        return object()
+    monkeypatch.setattr(api, "_elogo_giris", giris)
+    assert api.elogo_baglan() == {"ok": True}
+    assert kilitli == [True]              # giriş sürerken yeni işlem başlatılamaz
+    assert api._calisiyor is False
+
+
+def test_baglan_vazgecilirse_numara_ekrani_acilmaz(api, monkeypatch):
+    monkeypatch.setattr(api, "_elogo_giris", lambda: None)
+    assert api.elogo_baglan() == {"vazgecildi": True}
+    assert api._calisiyor is False
+
+
+def test_baglan_hesap_hatasi_mesajini_doner(api, monkeypatch):
+    def giris():
+        raise ElogoHatasi("Birden çok firmalı hesaplar henüz desteklenmiyor.")
+    monkeypatch.setattr(api, "_elogo_giris", giris)
+    assert api.elogo_baglan() == {"hata": "Birden çok firmalı hesaplar henüz desteklenmiyor."}
+    assert api._calisiyor is False
+
+
+def test_baglan_beklenmeyen_hatada_mesaj_sizmaz_kilit_kalmaz(api, monkeypatch):
+    def giris():
+        raise RuntimeError("gizli-token")
+    monkeypatch.setattr(api, "_elogo_giris", giris)
+    sonuc = api.elogo_baglan()
+    assert "gizli-token" not in sonuc["hata"] and "RuntimeError" in sonuc["hata"]
+    assert api._calisiyor is False
+
+
+def test_is_surerken_baglan_reddedilir_ve_kilide_dokunmaz(api, monkeypatch):
+    monkeypatch.setattr(api, "_elogo_giris", lambda: pytest.fail("giriş açılmamalıydı"))
+    api._calisiyor = True
+    assert "hata" in api.elogo_baglan()
+    assert api._calisiyor is True         # süren işin kilidi bırakılmamalı
+    api._calisiyor = False
+    api._deneniyor = True
+    assert "hata" in api.elogo_baglan()
+
+
+def test_baglan_durdurulmus_koşudan_kalan_isareti_temizler(api, monkeypatch):
+    api._stop_event.set()
+    gorulen = []
+    monkeypatch.setattr(api, "_elogo_giris",
+                        lambda: gorulen.append(api._stop_event.is_set()))
+    api.elogo_baglan()
+    assert gorulen == [False]
+
+
+def test_numara_ozeti_js_guven_siniri(api):
+    assert api.elogo_numara_ozeti(None)["aranacak"] == 0
+    assert api.elogo_numara_ozeti(5)["aranacak"] == 0
+    assert api.elogo_numara_ozeti("A1")["aranacak"] == 1

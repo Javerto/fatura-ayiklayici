@@ -391,45 +391,121 @@ async function basla(retry) {
 }
 
 async function elogoBaslat() {
-  if (!D.klasor) await klasorSec();
-  if (!D.klasor) return;
+  // `basla` gibi: çift tıklama köprü dönmeden kilitlensin.
+  const eskiNe = $("stNe").textContent;
+  $("btnBasla").disabled = true;
+  $("btnElogo").disabled = true;
+  $("btnAlanlar").disabled = true;
+  $("btnDurdur").disabled = false;    // Durdur, giriş penceresini de kapatır
+  $("stNe").textContent = "eLogo Girişi Bekleniyor…";
+  let cevap;
+  try {
+    cevap = await pywebview.api.elogo_baglan();
+  } finally {
+    D.durduruluyor = false;
+    $("stNe").textContent = eskiNe;
+    $("btnBasla").disabled = false;
+    $("btnElogo").disabled = false;
+    $("btnAlanlar").disabled = false;
+    $("btnDurdur").disabled = true;
+  }
+  if (cevap.hata) await bilgiModal("eLogo girişi yapılamadı", cevap.hata);
+  else if (cevap.ok) numaraEkrani();
+}
+
+function numaraEkrani() {
   const p = modal(`
     <h2>eLogo'dan indir</h2>
-    <div class="icerik f"><textarea id="elogoNolar" rows="12" spellcheck="false"
-      aria-label="Fatura numaraları"></textarea></div>
+    <div class="icerik">
+      <div class="el-akis">
+        <span class="adim bitti"><span class="no">✓</span>eLogo'ya giriş</span><span class="cizgi"></span>
+        <span class="adim simdi"><span class="no">2</span>Numaraları yapıştır</span><span class="cizgi"></span>
+        <span class="adim"><span class="no">3</span>İndir ve özet</span>
+      </div>
+      <div class="el-klasor">
+        <div class="yol"><small>İnecek klasör</small><span id="elKlasor"></span></div>
+        <button class="btn-sec" id="elDegistir">Değiştir</button>
+      </div>
+      <div class="f mono">
+        <label class="el-etiket" for="elNolar">Fatura numaraları</label>
+        <div class="el-ipucu">Excel'den kopyalayıp yapıştırabilirsiniz. Alt alta, virgülle ya da boşlukla ayrılmış numaralar da olur.</div>
+        <textarea id="elNolar" rows="7" spellcheck="false"
+          placeholder="GIB2024000000101&#10;ABC2023000000042"></textarea>
+      </div>
+      <div class="el-sayac" id="elSayac"></div>
+      <div class="el-gecersiz" id="elGecersiz"></div>
+    </div>
     <div class="alt">
-      <button class="btn-sec" id="elogoIptal">Vazgeç</button>
-      <button class="btn-primary" id="elogoDevam">İndir</button>
+      <button class="btn-sec" id="elIptal">Vazgeç</button>
+      <button class="btn-primary" id="elIndir" disabled>İndir</button>
     </div>`, true);
-  p.querySelector("#elogoNolar").focus();
-  p.querySelector("#elogoIptal").onclick = () => p.remove();
-  p.querySelector("#elogoDevam").onclick = async () => {
-    const metin = p.querySelector("#elogoNolar").value;
-    p.remove();
-    // `basla` gibi: çift tıklama köprü dönmeden kilitlensin.
-    $("btnBasla").disabled = true;
-    $("btnElogo").disabled = true;
-    const cevap = await pywebview.api.elogo_indir(D.klasor, metin);
-    if (cevap.hata) {
-      $("btnBasla").disabled = false;
-      $("btnElogo").disabled = false;
-      bilgiSatiri(cevap.hata, "err");
-      return;
-    }
-    Object.assign(D, { calisiyor: true, siradaki: 0, toplam: 0, ok: 0, uyarili: 0,
-                       atlanan: 0, paralar: {}, uyarilar: [], durduruluyor: false,
-                       baslangic: Date.now() });
-    D.ucan.clear();
-    feedTemizle();
-    $("stUcan").hidden = true;
-    $("stNe").textContent = "eLogo Girişi Bekleniyor…";
-    $("stEta").textContent = "—";
-    $("btnDurdur").disabled = false;
-    $("btnAlanlar").disabled = true;
-    $("btnRetry").disabled = true;
-    $("btnUyari").disabled = true;
-    durumTazele();
+  p.querySelector(".modal").classList.add("el-modal");
+  const q = s => p.querySelector(s);
+  const esc = e => { if (e.key === "Escape") kapat(); };
+  const kapat = () => { document.removeEventListener("keydown", esc); p.remove(); };
+  document.addEventListener("keydown", esc);
+  p.addEventListener("click", e => { if (e.target === p) kapat(); });
+
+  let sira = 0, aranacak = 0, zamanlayici;
+  const dugme = () => {
+    q("#elKlasor").textContent = D.klasor || "Klasör seçilmedi";
+    q("#elIndir").disabled = !aranacak || !D.klasor;
+    q("#elIndir").textContent = aranacak ? `${aranacak} Faturayı İndir` : "İndir";
   };
+  const tazele = async () => {
+    const benim = ++sira;
+    const o = await pywebview.api.elogo_numara_ozeti(q("#elNolar").value);
+    if (benim !== sira) return;           // bu arada yeni yazıldı, eski sonuç gösterilmesin
+    aranacak = o.aranacak;
+    q("#elSayac").innerHTML =
+      (o.aranacak ? `<span class="iyi">${o.aranacak} fatura aranacak</span>`
+                  : `<span class="gri">Henüz numara yok</span>`) +
+      (o.tekrar ? `<span class="gri">${o.tekrar} tekrar çıkarıldı</span>` : "") +
+      (o.gecersiz.length ? `<span class="kotu">${o.gecersiz.length} geçersiz (16 karakterden uzun)</span>` : "");
+    q("#elGecersiz").textContent = o.gecersiz.join("  ");
+    dugme();
+  };
+  q("#elNolar").oninput = () => {
+    q("#elIndir").disabled = true;        // sayaç yazılanı yakalayana kadar
+    clearTimeout(zamanlayici);
+    zamanlayici = setTimeout(tazele, 150);
+  };
+  q("#elDegistir").onclick = async () => { await klasorSec(); dugme(); };
+  q("#elIptal").onclick = kapat;
+  q("#elIndir").onclick = () => {
+    const metin = q("#elNolar").value;
+    clearTimeout(zamanlayici);
+    sira++;
+    kapat();
+    elogoIndir(metin);
+  };
+  tazele();
+  q("#elNolar").focus();
+}
+
+async function elogoIndir(metin) {
+  $("btnBasla").disabled = true;
+  $("btnElogo").disabled = true;
+  const cevap = await pywebview.api.elogo_indir(D.klasor, metin);
+  if (cevap.hata) {
+    $("btnBasla").disabled = false;
+    $("btnElogo").disabled = false;
+    bilgiSatiri(cevap.hata, "err");
+    return;
+  }
+  Object.assign(D, { calisiyor: true, siradaki: 0, toplam: 0, ok: 0, uyarili: 0,
+                     atlanan: 0, paralar: {}, uyarilar: [], durduruluyor: false,
+                     baslangic: Date.now() });
+  D.ucan.clear();
+  feedTemizle();
+  $("stUcan").hidden = true;
+  $("stNe").textContent = "İndiriliyor…";
+  $("stEta").textContent = "—";
+  $("btnDurdur").disabled = false;
+  $("btnAlanlar").disabled = true;
+  $("btnRetry").disabled = true;
+  $("btnUyari").disabled = true;
+  durumTazele();
 }
 
 // ═══ AÇILIŞ ═══
