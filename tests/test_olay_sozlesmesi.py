@@ -37,6 +37,17 @@ def test_elogo_olay_sozlesmesi_ve_token_sizdirmaz(tmp_path):
     assert "sahte-token-123" not in json.dumps(olaylar, ensure_ascii=False)
 
 
+def test_app_js_numara_ekrani_sozlesmesini_okuyor(tmp_path):
+    """web/app.js sayaç ve giriş sonucunu bu anahtarlardan okuyor."""
+    api = Api(kok=tmp_path)
+    assert set(api.elogo_numara_ozeti("A1")) == {"aranacak", "tekrar", "gecersiz"}
+    js = pathlib.Path("web/app.js").read_text("utf-8")
+    # `o.gecersiz` özet ekranında da geçer; sayacınki `.join` ile ayrılır.
+    for parca in ("o.aranacak", "o.tekrar", "o.gecersiz.join"):
+        assert parca in js, parca
+    assert "cevap.ok" in js and "cevap.hata" in js
+
+
 def test_app_js_elogo_sozlesmesini_okuyor():
     js = pathlib.Path("web/app.js").read_text("utf-8")
     assert 'case "elogo_satir"' in js and 'case "elogo_ozet"' in js

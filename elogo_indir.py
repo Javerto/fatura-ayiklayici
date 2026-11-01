@@ -19,13 +19,15 @@ class _IsDurdu(Exception):
     """Kalan faturaları anlamsız kılan hata; mesajı özete gider."""
 
 
+def _parcalar(metin):
+    """Yapıştırılan metnin numaraları: Excel sütunu, virgüllü ya da boşluklu liste."""
+    return [p for p in re.split(r"[\s,;]+", str(metin)) if p]
+
+
 def numaralari_ayristir(metin):
     """Yapıştırılan metin -> (aranacak numaralar, geçersiz numaralar)."""
     gecerli, gecersiz, gorulen = [], [], set()
-    for satir in str(metin).splitlines():
-        no = satir.strip()
-        if not no:
-            continue
+    for no in _parcalar(metin):
         no, _ = _duzelt_fatura_no(no)
         anahtar = no.casefold()
         if anahtar in gorulen:
@@ -33,6 +35,13 @@ def numaralari_ayristir(metin):
         gorulen.add(anahtar)
         (gecersiz if len(no) > 16 else gecerli).append(no)
     return gecerli, gecersiz
+
+
+def numara_ozeti(metin):
+    """Numara ekranının canlı sayacı; indirmeyle aynı kuralı kullanır."""
+    gecerli, gecersiz = numaralari_ayristir(metin)
+    return {"aranacak": len(gecerli), "gecersiz": gecersiz,
+            "tekrar": len(_parcalar(metin)) - len(gecerli) - len(gecersiz)}
 
 
 def oturum_coz(ham):

@@ -368,3 +368,31 @@ tbody tr:hover{background:var(--card)}
 .ed-uyari{color:var(--warn);font-size:11.5px;margin-top:3px}
 .ed-durum.warn{color:var(--warn)}
 .ed-durum.err{color:var(--err)}
+
+/* ═══ ELOGO NUMARA EKRANI ═══ */
+.modal.el-modal{max-width:560px}
+.el-akis{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;
+  color:var(--dim);margin-bottom:14px}
+.el-akis .adim{display:flex;align-items:center;gap:6px}
+.el-akis .no{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+  font-size:11px;font-weight:600;border:1px solid var(--line)}
+.el-akis .bitti{color:var(--sub)}
+.el-akis .bitti .no{background:var(--ok);border-color:var(--ok);color:var(--on-accent)}
+.el-akis .simdi{color:var(--tx);font-weight:600}
+.el-akis .simdi .no{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.el-akis .cizgi{width:22px;height:1px;background:var(--line)}
+.el-klasor{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:9px 11px;background:var(--card);border:1px solid var(--line);border-radius:8px;
+  margin-bottom:14px;font-size:12.5px;color:var(--tx)}
+.el-klasor .yol{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.el-klasor small{display:block;color:var(--dim);font-size:11px;margin-bottom:2px}
+.el-klasor .btn-sec{padding:7px 12px;font-size:12px;flex-shrink:0}
+.el-etiket{display:block;font-size:13px;font-weight:600;color:var(--tx);margin-bottom:3px}
+.el-ipucu{font-size:12px;color:var(--sub);line-height:1.5;margin-bottom:8px}
+.f.mono textarea{font-family:"Cascadia Mono",Consolas,monospace;font-size:12.5px}
+.el-sayac{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;min-height:18px}
+.el-sayac .iyi{color:var(--ok);font-weight:600}
+.el-sayac .gri{color:var(--dim)}
+.el-sayac .kotu{color:var(--err)}
+.el-gecersiz{font-family:"Cascadia Mono",Consolas,monospace;font-size:11.5px;
+  color:var(--err);margin-top:4px;word-break:break-all;max-height:64px;overflow-y:auto}

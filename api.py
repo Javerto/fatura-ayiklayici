@@ -29,8 +29,8 @@ from excel_utils import excel_olustur
 from extraction import pdf_den_veri_cek, veri_dogrula
 from elogo import ElogoIstemcisi
 from elogo_indir import (OIDC_ANAHTARI, indir as elogo_indir_akisi,
-                         numaralari_ayristir, oturum_coz)
-from hatalar import (APIKeyHatasi, ExcelHatasi, InternetHatasi, ModelHatasi,
+                         numara_ozeti, numaralari_ayristir, oturum_coz)
+from hatalar import (APIKeyHatasi, ElogoHatasi, ExcelHatasi, InternetHatasi, ModelHatasi,
                      PDFHatasi)
 from review import (form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
@@ -206,6 +206,31 @@ class Api:
     def durdur(self) -> bool:
         self._stop_event.set()
         return True
+
+    def elogo_baglan(self) -> dict:
+        """Numara ekranından önce oturumu hazırlar; geçerli oturum varsa pencere açmaz.
+
+        Giriş bitene kadar döner: pywebview her köprü çağrısını ayrı thread'de
+        işliyor, arayüz donmaz. `_calisiyor` giriş sürerken işlem başlatmayı engeller.
+        """
+        with self._baslatma_kilidi:
+            if self._calisiyor or self._deneniyor:
+                return {"hata": "Zaten bir işlem sürüyor."}
+            self._stop_event.clear()
+            self._calisiyor = True
+        try:
+            return {"ok": True} if self._elogo_giris() else {"vazgecildi": True}
+        except ElogoHatasi as e:
+            return {"hata": str(e)}
+        except Exception as e:
+            # Yalnız tip adı: istisna metni oturum verisi taşıyabilir.
+            return {"hata": f"eLogo penceresi açılamadı ({type(e).__name__})."}
+        finally:
+            self._calisiyor = False
+
+    def elogo_numara_ozeti(self, metin: str) -> dict:
+        """Numara ekranının canlı sayacı."""
+        return numara_ozeti(metin if isinstance(metin, str) else "")
 
     def elogo_indir(self, klasor: str, metin: str) -> dict:
         """eLogo oturumuyla numaraları arar ve XML'leri indirir."""
