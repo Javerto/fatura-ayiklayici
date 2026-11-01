@@ -7,11 +7,31 @@ yeniden adlandırılırsa ekran sessizce boşalır — hiçbir davranış testi 
 import pathlib
 import queue
 import re
+import json
 import threading
 
 import pytest
 
 from api import Api
+
+
+def test_elogo_olay_sozlesmesi_ve_token_sizdirmaz(tmp_path):
+    from elogo_indir import indir
+    q = __import__("queue").Queue()
+    class Istemci:
+        def fatura_bul(self, nolar): return {"A": []}
+    indir(["A"], [], str(tmp_path), lambda: Istemci(), q, threading.Event())
+    olaylar = []
+    while not q.empty(): olaylar.append(q.get_nowait())
+    assert set(olaylar[-1][1]) == {"indirilen", "atlanan", "bulunamayan", "gecersiz", "hatali", "coklu", "indirilmedi", "hata", "durduruldu"}
+    assert all(set(veri) == {"no", "durum", "mesaj"} for tip, veri in olaylar if tip == "elogo_satir")
+    assert "sahte-token-123" not in json.dumps(olaylar, ensure_ascii=False)
+
+
+def test_app_js_elogo_olaylarini_taniyor():
+    js = pathlib.Path("web/app.js").read_text("utf-8")
+    assert 'case "elogo_satir"' in js
+    assert 'case "elogo_ozet"' in js
 
 
 def _worker_olaylari(tmp_path, monkeypatch):

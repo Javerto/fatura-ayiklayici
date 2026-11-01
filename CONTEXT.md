@@ -88,6 +88,10 @@ listeleme ve UBL XML indirme isteklerinin tek kapısı. Arayüzü dar:
 oturum süresi, JSON/base64 doğrulaması ve Türkçe hata sınıflandırması ardında
 durur; indirme döngüsü bu istemcinin dışındadır.
 
+**eLogo indirme akışı** (`elogo_indir`) — sessionStorage oturumunu çözer,
+numaraları arar ve XML'leri güvenli/atomik biçimde klasöre indirir. Arayüzden
+bağımsızdır; ilerleme ve özet olaylarını `log_q` kuyruğuna yazar.
+
 **Sınırlayıcı** (`gemini.Sinirlayici`) — Dakikadaki istek sayısını Gemini
 ücretsiz kotasının altında tutar. Durumu **süreç ömürlüdür**, çalışma ömürlü
 değil: kota API anahtarına aittir, kullanıcı durdurup yeniden başlattığında

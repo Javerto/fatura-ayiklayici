@@ -129,6 +129,15 @@ window.olaylar = function (liste) {
       case "info":
         bilgiSatiri(o.d.trim());
         break;
+      case "elogo_satir": {
+        const e = o.d;
+        const tip = e.durum === "indirildi" ? "ok" : e.durum === "atlandi" ? "warn" : "err";
+        satirEkle(`<div class="item ${tip}"><div class="dot">${tip === "ok" ? "✓" : "!"}</div><div class="grow"><div class="nm">${kacar(e.no)}</div><div class="note">${kacar(e.mesaj)}</div></div></div>`);
+        break;
+      }
+      case "elogo_ozet":
+        elogoBitti(o.d);
+        break;
       case "review":
         reviewAc(o);
         break;
@@ -161,6 +170,26 @@ function bitti(o) {
 
   if (o.hata) bilgiSatiri("Excel kaydedilemedi: " + o.hata, "err");
   else if (o.yazilan) bilgiSatiri(`Excel oluşturuldu — ${o.yazilan} yeni fatura yazıldı.`);
+}
+
+function elogoBitti(o) {
+  D.calisiyor = false; D.durduruluyor = false; D.ucan.clear();
+  $("btnBasla").disabled = false; $("btnElogo").disabled = false;
+  $("btnAlanlar").disabled = false; $("btnDurdur").disabled = true;
+  $("stUcan").hidden = true; $("stNe").textContent = "Tamamlandı";
+  if (D.klasor) klasorGoster(D.klasor);
+  const satir = (baslik, xs) => xs.length ? `${baslik}: ${xs.join(", ")}` : "";
+  const metin = [satir("İndirilen", o.indirilen), satir("Atlanan", o.atlanan),
+    satir("Bulunamayan", o.bulunamayan), satir("Geçersiz", o.gecersiz),
+    satir("Hatalı", o.hatali), o.hata ? `Hata: ${o.hata}` : ""].filter(Boolean).join("\n");
+  const kopyalanacak = (o.bulunamayan || []).join("\n");
+  const p = modal(`<h2>eLogo indirme özeti</h2><div class="aciklama">${kacar(metin || "İşlem tamamlandı.").replaceAll("\n", "<br>")}</div><div class="alt">${kopyalanacak ? '<button class="btn-sec" id="elogoKopya">Bulunamayanları Kopyala</button>' : ""}<button class="btn-primary" id="elogoTamam">Tamam</button></div>`);
+  p.querySelector("#elogoTamam").onclick = () => p.remove();
+  const kopya = p.querySelector("#elogoKopya");
+  if (kopya) kopya.onclick = async () => {
+    try { await navigator.clipboard.writeText(kopyalanacak); }
+    catch (_) { const t = document.createElement("textarea"); t.value = kopyalanacak; document.body.appendChild(t); t.select(); document.execCommand("copy"); t.remove(); }
+  };
 }
 
 // ═══ MODAL ═══
@@ -324,6 +353,20 @@ async function basla(retry) {
   durumTazele();
 }
 
+async function elogoBaslat() {
+  if (!D.klasor) { await klasorSec(); if (!D.klasor) return; }
+  const p = modal(`<h2>eLogo'dan indir</h2><div class="icerik"><textarea id="elogoNolar" rows="10"></textarea></div><div class="alt"><button class="btn-sec" id="elogoIptal">Vazgeç</button><button class="btn-primary" id="elogoDevam">Başlat</button></div>`, true);
+  p.querySelector("#elogoIptal").onclick = () => p.remove();
+  p.querySelector("#elogoDevam").onclick = async () => {
+    const metin = p.querySelector("#elogoNolar").value; p.remove();
+    $("btnBasla").disabled = true; $("btnElogo").disabled = true;
+    $("btnDurdur").disabled = false; D.calisiyor = true; D.siradaki = 0; D.toplam = 0;
+    D.ucan.clear(); feedTemizle(); durumTazele();
+    const cevap = await pywebview.api.elogo_indir(D.klasor, metin);
+    if (cevap.hata) { D.calisiyor = false; $("btnBasla").disabled = false; $("btnElogo").disabled = false; $("btnDurdur").disabled = true; bilgiSatiri(cevap.hata, "err"); }
+  };
+}
+
 // ═══ AÇILIŞ ═══
 async function acilis() {
   const d = await pywebview.api.baslangic_durumu();
@@ -338,6 +381,7 @@ async function acilis() {
   $("btnKlasor").onclick = klasorSec;
   $("klasorKart").onclick = e => { if (e.target.id !== "btnKlasor") klasorSec(); };
   $("btnBasla").onclick = () => basla(false);
+  $("btnElogo").onclick = elogoBaslat;
   $("btnRetry").onclick = () => basla(true);
   $("btnDurdur").onclick = () => {
     pywebview.api.durdur();
