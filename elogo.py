@@ -6,19 +6,32 @@ import json
 import time
 from urllib.error import HTTPError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from hatalar import ElogoHatasi, ElogoOturumHatasi
 
 
 TABAN_URL = "https://customerapi-edevlet.elogo.com.tr"
+# ponytail: rowOffset'in satır sayısı olması ve 100'lük parçanın kabul edilmesi
+# canlıda doğrulanmamış varsayımlar (spike en fazla 2 numara denedi); doğrulama #17'de.
 PARCA_BOYU = 100
+
+
+class _YonlendirmeyiIzleme(HTTPRedirectHandler):
+    """urllib yönlendirmede Authorization başlığını yeni adrese de taşır; token
+    başka bir host'a gitmesin diye izlenmez. 3xx, durum koduyla hata olarak döner."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_acici = build_opener(_YonlendirmeyiIzleme)
 
 
 def _varsayilan_gonder(yontem, url, govde, basliklar):
     istek = Request(url, data=govde, headers=basliklar, method=yontem)
     try:
-        with urlopen(istek, timeout=60) as yanit:
+        with _acici.open(istek, timeout=60) as yanit:
             return yanit.status, yanit.read()
     except HTTPError as hata:
         return hata.code, hata.read()
@@ -85,10 +98,6 @@ class ElogoIstemcisi:
             }
             veri = self._istek("POST", f"{TABAN_URL}/invoice/load",
                                json.dumps(govde).encode("utf-8"), True)
-            if not isinstance(veri, dict):
-                raise ElogoHatasi("eLogo yanıtı nesne değil.")
-            if veri.get("Success") is False:
-                raise ElogoHatasi("eLogo isteği başarısız oldu.")
             items = veri.get("Items")
             total = veri.get("TotalCount")
             if (not isinstance(items, list) or isinstance(total, bool)
@@ -106,16 +115,12 @@ class ElogoIstemcisi:
                 return
             if not items:
                 raise ElogoHatasi("eLogo fatura listesi boş sayfa döndürdü.")
-            # ponytail: rowOffset'in satır sayısı, 100'lük parçanın canlı davranışı
-            # doğrulanmamış varsayımlardır; doğrulama #17'de yapılacak.
             row_offset += len(items)
 
     def xml_indir(self, invoice_id):
         url = (f"{TABAN_URL}/invoice/GenerateView?invoiceId="
                f"{quote(invoice_id, safe='')}&location=0&resultFormat=2")
         veri = self._istek("GET", url, None, False)
-        if not isinstance(veri, dict):
-            raise ElogoHatasi("eLogo XML yanıtı nesne değil.")
         payload = veri.get("Payload")
         if not isinstance(payload, dict) or payload.get("IsSuccess") is not True:
             raise ElogoHatasi("eLogo XML yanıtı başarısız.")
@@ -146,4 +151,8 @@ class ElogoIstemcisi:
             veri = json.loads(yanit.decode("utf-8"))
         except (UnicodeDecodeError, ValueError, TypeError):
             raise ElogoHatasi("eLogo yanıtı JSON değil.") from None
+        if not isinstance(veri, dict):
+            raise ElogoHatasi("eLogo yanıtı nesne değil.")
+        if veri.get("Success") is False:
+            raise ElogoHatasi("eLogo isteği başarısız oldu.")
         return veri

@@ -1,6 +1,8 @@
 import base64
 import http.client
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
@@ -149,6 +151,7 @@ def test_oge_icerisinde_fatura_numarasi_eksikse_hata_verir():
     {"Success": True, "Payload": {"IsSuccess": False}},
     {"Success": True, "Payload": {"IsSuccess": True}},
     {"Success": True, "Payload": {"IsSuccess": True, "Document": "!bozuk!"}},
+    {"Success": False, "Payload": {"IsSuccess": True, "Document": "PHgvPg=="}},
 ])
 def test_xml_yanit_hatalari(veri):
     gonder = SahteGonder([yanit(veri)])
@@ -171,6 +174,47 @@ def test_http_exception_ag_hatasi_olur():
 
     with pytest.raises(ElogoHatasi):
         istemci(patlayan).fatura_bul(["NO"])
+
+
+@pytest.mark.parametrize("expiry, sinif", [
+    (1050, ElogoOturumHatasi),
+    (2000, ElogoHatasi),
+])
+def test_200_disi_yanitin_govdesi_mesaja_sizmaz(expiry, sinif):
+    gonder = SahteGonder([(500, b'{"Response":"gizli-govde"}')])
+    istemci_nesnesi = elogo.ElogoIstemcisi(
+        TOKEN, CUSTOMER, son_kullanma=expiry, gonder=gonder, saat=lambda: 1000)
+    with pytest.raises(sinif) as hata:
+        istemci_nesnesi.fatura_bul(["NO"])
+    assert "gizli-govde" not in str(hata.value)
+    assert "500" in str(hata.value)
+
+
+def test_varsayilan_gonder_yonlendirmeyi_izlemez_token_tasinmaz():
+    istenen_yollar = []
+
+    class Sunucu(BaseHTTPRequestHandler):
+        def do_GET(self):
+            istenen_yollar.append(self.path)
+            self.send_response(302)
+            self.send_header("Location", "/hedef")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    sunucu = ThreadingHTTPServer(("127.0.0.1", 0), Sunucu)
+    threading.Thread(target=sunucu.serve_forever, daemon=True).start()
+    try:
+        durum, _ = elogo._varsayilan_gonder(
+            "GET", f"http://127.0.0.1:{sunucu.server_port}/kaynak", None,
+            {"Authorization": f"Bearer {TOKEN}"})
+    finally:
+        sunucu.shutdown()
+        sunucu.server_close()
+    assert durum == 302
+    assert istenen_yollar == ["/kaynak"]
 
 
 def test_token_repr_ve_hata_mesajinda_yoktur():
