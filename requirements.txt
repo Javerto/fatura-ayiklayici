@@ -4,6 +4,8 @@ pymupdf<2
 python-dotenv
 openpyxl
 pywebview
+# XML'e gömülü XSLT şablonu için. Tarayıcının XSLTProcessor'ı Chromium'dan kaldırılıyor.
+lxml
 
 # Gelistirme
 pytest

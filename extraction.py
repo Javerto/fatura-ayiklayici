@@ -4,8 +4,9 @@ PDF ve XML faturalardan veri çıkarma modülü.
 
 import fitz
 import xml.etree.ElementTree as ET
-import json, os, re, pathlib
+import base64, json, os, re, pathlib
 from datetime import datetime as _dt
+from lxml import etree as _lxml
 
 from hatalar import PDFHatasi, XMLHatasi, ModelHatasi
 import sema as _sema
@@ -277,12 +278,46 @@ def pdf_to_images(dosya_yolu: str, zoom: float = 1.5) -> list[bytes]:
     return images
 
 
+NS = {
+    "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
+    "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
+}
+_XSL = "{http://www.w3.org/1999/XSL/Transform}"
+
+
+def xml_gorunumu(xml_yolu: str) -> str | None:
+    """XML'e gömülü XSLT şablonuyla faturanın görüntüsünü (HTML) üretir; olmazsa None.
+
+    Şablon faturayı kesenden gelir, yabancı kod sayılır: varlık çözümleme, ağ ve
+    dönüşümdeki dosya erişimi kapalı. Çıktı da güvenilmez; arayüz onu betiksiz bir
+    çerçevede gösterir. Tarayıcının XSLTProcessor'ı kullanılmıyor: Chromium kaldırıyor.
+
+    ponytail: dönüşümde süre sınırı yok; kasıtlı sonsuz döngülü şablon bir iş
+    parçacığını meşgul eder (arayüz donmaz). Sorun olursa ayrı süreçte çalıştırılır.
+    """
+    ayristirici = _lxml.XMLParser(resolve_entities=False, no_network=True)
+    try:
+        fatura = _lxml.parse(xml_yolu, ayristirici)
+    except (_lxml.LxmlError, OSError):
+        return None
+    for ek in fatura.getroot().iterfind(
+            "cac:AdditionalDocumentReference/cac:Attachment/cbc:EmbeddedDocumentBinaryObject", NS):
+        try:
+            sablon = _lxml.fromstring(base64.b64decode(ek.text or ""), ayristirici)
+            if sablon.tag not in (_XSL + "stylesheet", _XSL + "transform"):
+                continue
+            # Erişim denetimi yalnız dönüşümde işler; bunlar derlenirken okunur.
+            if next(sablon.iter(_XSL + "include", _XSL + "import"), None) is not None:
+                return None
+            donustur = _lxml.XSLT(sablon, access_control=_lxml.XSLTAccessControl.DENY_ALL)
+            return str(donustur(fatura)) or None
+        except (_lxml.LxmlError, ValueError, TypeError):
+            continue          # bozuk ek veya şablon: sıradakine bak
+    return None
+
+
 def xml_den_veri_cek(xml_yolu: str, pdf_yolu: str | None) -> dict:
     """UBL XML faturadan veri çıkarır. pdf_yolu None ise sadece XML vardır."""
-    NS = {
-        "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
-        "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
-    }
     try:
         root = ET.parse(xml_yolu).getroot()
     except ET.ParseError as e:

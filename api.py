@@ -26,7 +26,7 @@ import gemini
 import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
-from extraction import pdf_deger_bul, pdf_den_veri_cek, veri_dogrula
+from extraction import pdf_deger_bul, pdf_den_veri_cek, veri_dogrula, xml_gorunumu
 from elogo import ElogoIstemcisi
 from elogo_indir import (OIDC_ANAHTARI, indir as elogo_indir_akisi,
                          numara_ozeti, numaralari_ayristir, oturum_coz)
@@ -59,6 +59,12 @@ VARSAYILAN_BOYUT = (1040, 760)
 EN_KUCUK_BOYUT   = (760, 560)
 
 load_dotenv(dotenv_path=ENV_DOSYASI)
+
+
+def _xml_mi(satir: dict) -> bool:
+    """Satırın kaynağı yalnızca XML mi? (PDF'i olan XML'de dosya_yolu PDF'tir.)"""
+    yol = str(satir.get("dosya_yolu") or "")
+    return yol.lower().endswith(".xml") and os.path.exists(yol)
 
 
 def pencere_boyutu() -> tuple[int, int]:
@@ -620,10 +626,14 @@ class Api:
         return self._pdf_doc
 
     def onizleme(self, i: int, sayfa: int, zoom: float) -> dict:
-        """Faturanın PDF sayfasını PNG olarak döndürür (base64)."""
+        """PDF sayfası: {png (base64), sayfa, toplam}; XML görüntüsü: {html}."""
         satir = self._satir(i)
         if satir is None:
             return {"hata": "Önizleme yok"}
+        if _xml_mi(satir):
+            html = xml_gorunumu(str(satir["dosya_yolu"]))
+            return {"html": html} if html else {
+                "hata": "Bu XML'de görüntü şablonu yok.\n“Dışarıda aç” ile bakabilirsiniz."}
         try:
             with self._pdf_kilit:
                 doc = self._pdf_belgesi(satir)
@@ -646,6 +656,8 @@ class Api:
         metinler, tam = arama_metinleri(metin, self._sema.tip_haritasi.get(alan, "metin"))
         if not metinler:
             return {}
+        if _xml_mi(satir):          # görüntü çerçevede; arama orada, arayüzde yapılır
+            return {"metinler": metinler, "tam": tam}
         try:
             with self._pdf_kilit:
                 doc = self._pdf_belgesi(satir)
@@ -782,6 +794,7 @@ class Api:
                 "uyarilar": veri_dogrula(satir, baska_nolar, self._sema),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
+                "xml":      _xml_mi(satir),
                 "kaynak":   fatura.kaynak(satir),
             })
         return {"t": "review", "satirlar": satirlar,
