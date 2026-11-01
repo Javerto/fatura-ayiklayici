@@ -10,18 +10,44 @@ Kullanım:
 
 import pathlib
 import sys
+import tempfile
 
 import webview
 
 from api import Api, EN_KUCUK_BOYUT, pencere_boyutu
 
 VERSION = "2.0"
+WEB_DOSYALARI = ("app.js", "editor.js", "index.html", "review.js",
+                 "style.css", "tema.css", "tema.js")
+
+
+def SAGLIK_RAPORU() -> pathlib.Path:
+    return pathlib.Path(tempfile.gettempdir()) / "FaturaAyiklayici-saglik.txt"
 
 
 def web_dosyasi(ad: str) -> str:
     """web/ altındaki bir dosyanın tam yolu (EXE modunda PyInstaller geçici klasörü)."""
     kok = pathlib.Path(getattr(sys, "_MEIPASS", pathlib.Path(__file__).parent))
     return str(kok / "web" / ad)
+
+
+def saglik_kontrolu() -> int:
+    """`--saglik`: paket eksiksiz mi? Pencere açmadan yanıtlar; 0 = sağlam.
+
+    CI'daki EXE denemesi için. `--windowed` EXE çökünce hata penceresi açıp
+    beklediğinden "süreç ayakta" kontrolü çökmüş EXE'yi de sağlam sayardı.
+    """
+    sorunlar = [f"eksik web dosyası: {ad}" for ad in WEB_DOSYALARI
+                if not pathlib.Path(web_dosyasi(ad)).exists()]
+    # Üstteki import'lar buraya gelmeden çalıştı. WinForms katmanı ise pencere
+    # açılana kadar yüklenmiyor; pakette eksikse ancak kullanıcıda ortaya çıkar.
+    try:
+        import webview.platforms.winforms  # noqa: F401
+    except Exception as e:
+        sorunlar.append(f"WinForms yüklenemedi: {e!r}")
+    # `--windowed` EXE'nin konsolu yok: neden CI çıktısına ancak dosyayla ulaşır.
+    SAGLIK_RAPORU().write_text("\n".join(sorunlar) or "sağlam", "utf-8")
+    return 1 if sorunlar else 0
 
 
 def _webview2_uyarisi(hata: Exception):
@@ -44,6 +70,8 @@ def _webview2_uyarisi(hata: Exception):
 
 
 def main():
+    if "--saglik" in sys.argv:
+        raise SystemExit(saglik_kontrolu())
     api = Api()
     # Pencere referansı `_` önekiyle saklanmalı: pywebview, arayüze açacağı
     # API nesnesinin genel niteliklerine özyineleyerek girer (webview/util.py

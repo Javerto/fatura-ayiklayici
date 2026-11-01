@@ -1,5 +1,6 @@
 google-genai
-pymupdf
+# 2.0 layout modelini (50 MB, onnxruntime) zorunlu kılıyor ve EXE açılmıyor.
+pymupdf<2
 python-dotenv
 openpyxl
 pywebview
