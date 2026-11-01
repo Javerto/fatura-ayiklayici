@@ -360,6 +360,7 @@ async function elogoBaslat() {
   p.querySelector("#elogoDevam").onclick = async () => {
     const metin = p.querySelector("#elogoNolar").value; p.remove();
     $("btnBasla").disabled = true; $("btnElogo").disabled = true;
+    $("btnRetry").disabled = true; $("btnUyari").disabled = true;
     $("btnDurdur").disabled = false; D.calisiyor = true; D.siradaki = 0; D.toplam = 0;
     D.ucan.clear(); feedTemizle(); durumTazele();
     const cevap = await pywebview.api.elogo_indir(D.klasor, metin);
