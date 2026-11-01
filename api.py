@@ -27,6 +27,9 @@ import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
 from extraction import pdf_den_veri_cek, veri_dogrula
+from elogo import ElogoIstemcisi
+from elogo_indir import (OIDC_ANAHTARI, indir as elogo_indir_akisi,
+                         numaralari_ayristir, oturum_coz)
 from hatalar import (APIKeyHatasi, ExcelHatasi, InternetHatasi, ModelHatasi,
                      PDFHatasi)
 from review import (form_satira_uygula, nihai_satirlar,
@@ -43,6 +46,12 @@ else:
 ENV_DOSYASI      = _BASE / ".env"
 GECMIS_DOSYASI   = _BASE / "gecmis.json"
 DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
+
+ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
+
+# Bu kadar süresi kalmayan oturum yeniden kullanılmaz. `elogo.py` oturum hatasını
+# son 60 sn'de verir: daha geniş olmalı ki yenileme aynı istemciyi geri vermesin.
+ELOGO_OTURUM_PAYI = 120
 
 GECERLI_TEMALAR = ("mocha", "macchiato", "frappe", "nord", "latte", "kagit")
 
@@ -96,6 +105,8 @@ class Api:
         self._baslatma_kilidi = threading.Lock()   # `basla` kontrol-ve-ata
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
+        self._elogo_pencere = None     # açık eLogo giriş penceresi
+        self._elogo_oturum = None      # (istemci, son_kullanma); yalnız bellekte
 
     # ── Arayüzden çağrılanlar ────────────────────────────────────────
 
@@ -195,6 +206,94 @@ class Api:
     def durdur(self) -> bool:
         self._stop_event.set()
         return True
+
+    def elogo_indir(self, klasor: str, metin: str) -> dict:
+        """eLogo oturumuyla numaraları arar ve XML'leri indirir."""
+        if not isinstance(klasor, str) or not isinstance(metin, str):
+            return {"hata": "Klasör ve numaralar metin olmalıdır."}
+        if not os.path.isdir(klasor):
+            return {"hata": "Lütfen geçerli bir klasör seçin."}
+        gecerli, gecersiz = numaralari_ayristir(metin)
+        if not gecerli and not gecersiz:
+            return {"hata": "En az bir fatura numarası girin."}
+        with self._baslatma_kilidi:
+            if self._calisiyor or self._deneniyor:
+                return {"hata": "Zaten bir işlem sürüyor."}
+            self._klasor = klasor
+            self._ayar_yaz("KLASOR", klasor)
+            self._log_q = queue.Queue()
+            self._stop_event.clear()
+            self._calisiyor = True
+            threading.Thread(
+                target=self._elogo_calistir,
+                args=(gecerli, gecersiz, klasor),
+                daemon=True,
+            ).start()
+            threading.Thread(target=self._pompa, daemon=True).start()
+        return {"ok": True}
+
+    def _elogo_calistir(self, gecerli, gecersiz, klasor):
+        ozet = elogo_indir_akisi(gecerli, gecersiz, klasor, self._elogo_giris,
+                                 self._log_q, self._stop_event)
+        # Portal token'ı süresinden önce iptal etmişse aynı oturumla her deneme
+        # aynı hatayı verirdi; iş durduysa sonraki indirme yeniden giriş istesin.
+        if ozet["hata"]:
+            self._elogo_oturum = None
+
+    def _elogo_giris(self):
+        """Geçerli oturumun istemcisini verir, yoksa giriş penceresi açar; vazgeçilirse None.
+
+        Token yalnız bellekte, istemcinin içinde durur; uygulama kapanınca yok olur.
+        Pencereye `js_api` verilmez: portal sayfası `Api` metotlarını çağıramamalı.
+        """
+        if self._elogo_oturum and time.time() < self._elogo_oturum[1] - ELOGO_OTURUM_PAYI:
+            return self._elogo_oturum[0]
+        self._elogo_oturum = None
+        kapandi = threading.Event()
+        pencere = webview.create_window("eLogo Girişi", ELOGO_PORTAL,
+                                        width=1100, height=800)
+        self._elogo_pencere = pencere
+        pencere.events.closed += kapandi.set
+        try:
+            while not (self._stop_event.is_set() or kapandi.is_set()):
+                oturum = oturum_coz(self._elogo_oturumu_oku(pencere, kapandi))
+                if oturum:
+                    token, customer_id, son_kullanma = oturum
+                    istemci = ElogoIstemcisi(token, customer_id, son_kullanma=son_kullanma)
+                    self._elogo_oturum = (istemci, son_kullanma)
+                    return istemci
+                self._stop_event.wait(2)
+            return None
+        finally:
+            self._elogo_pencere = None
+            if not kapandi.is_set():
+                try:
+                    pencere.destroy()
+                except Exception:
+                    pass        # kullanıcı aynı anda kapatmış olabilir
+
+    def _elogo_oturumu_oku(self, pencere, kapandi):
+        """sessionStorage kaydını okur; yönlenme sırasında okunamazsa None.
+
+        `evaluate_js` kapanan pencerede zaman aşımsız bekler; indirme thread'i
+        takılıp Durdur'u işlevsiz bırakmasın diye ayrı thread'de çalışır.
+        """
+        # ponytail: takılan okuma thread'i süreç sonuna kadar kalır; daemon ve nadir.
+        sonuc = []
+
+        def oku():
+            try:
+                sonuc.append(pencere.evaluate_js(
+                    f"sessionStorage.getItem({json.dumps(OIDC_ANAHTARI)})"))
+            except Exception:
+                pass
+
+        okuyucu = threading.Thread(target=oku, daemon=True)
+        okuyucu.start()
+        while (okuyucu.is_alive() and not kapandi.is_set()
+               and not self._stop_event.is_set()):
+            okuyucu.join(0.2)
+        return sonuc[0] if sonuc else None
 
     def yeniden_dene(self) -> dict:
         """Son çalışmada atlanan dosyaları tekrar dener."""
@@ -573,7 +672,10 @@ class Api:
 
             gonderilecek = []
             for tag, veri in olaylar:
-                if tag == "review":
+                if tag == "elogo_ozet":
+                    gonderilecek.append({"t": tag, "d": veri})
+                    bitti = True
+                elif tag == "review":
                     # Satırlar Python'da kalır; arayüze yalnızca metin
                     # izdüşümü gider (datetime/float JSON'da tur atmasın).
                     self._review = veri
@@ -601,6 +703,11 @@ class Api:
         # ThreadPoolExecutor thread'leri daemon değil: sinyal verilmezse Python
         # çıkmadan önce kuyruktaki her faturayı görünmeden Gemini'ye gönderir.
         self._stop_event.set()
+        try:
+            if self._elogo_pencere is not None:
+                self._elogo_pencere.destroy()
+        except Exception:
+            pass
         try:
             self._ayar_yaz("PENCERE",
                            f"{int(self._pencere.width)}x{int(self._pencere.height)}")

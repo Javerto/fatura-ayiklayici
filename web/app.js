@@ -129,6 +129,18 @@ window.olaylar = function (liste) {
       case "info":
         bilgiSatiri(o.d.trim());
         break;
+      case "elogo_satir": {
+        const e = o.d;
+        const tip = e.durum === "indirildi" ? "ok" : e.durum === "atlandi" ? "warn" : "err";
+        satirEkle(`<div class="item ${tip}">
+          <div class="dot">${{ ok: "✓", warn: "!", err: "✕" }[tip]}</div>
+          <div class="grow"><div class="nm">${kacar(e.no)}</div>
+          <div class="note">${kacar(e.mesaj)}</div></div></div>`);
+        break;
+      }
+      case "elogo_ozet":
+        elogoBitti(o.d);
+        break;
       case "review":
         reviewAc(o);
         break;
@@ -149,6 +161,7 @@ function bitti(o) {
   $("stNe").textContent = o.hata ? "Excel Kaydedilemedi" : "Tamamlandı";
   $("stEta").textContent = "—";
   $("btnBasla").disabled = false;
+  $("btnElogo").disabled = false;
   $("btnAlanlar").disabled = false;
   $("btnDurdur").disabled = true;
   $("btnExcel").disabled = !o.cikti;
@@ -161,6 +174,57 @@ function bitti(o) {
 
   if (o.hata) bilgiSatiri("Excel kaydedilemedi: " + o.hata, "err");
   else if (o.yazilan) bilgiSatiri(`Excel oluşturuldu — ${o.yazilan} yeni fatura yazıldı.`);
+}
+
+function elogoBitti(o) {
+  D.calisiyor = false;
+  D.durduruluyor = false;
+  $("stNe").textContent = o.durduruldu ? "Durduruldu" : o.hata ? "Durdu" : "Tamamlandı";
+  $("stEta").textContent = "—";
+  $("btnBasla").disabled = false;
+  $("btnElogo").disabled = false;
+  $("btnAlanlar").disabled = false;
+  $("btnDurdur").disabled = true;
+  if (D.klasor) klasorGoster(D.klasor);       // inen XML'ler sayaca yansısın
+  if (o.hata) bilgiSatiri(o.hata, "err");
+
+  const bolum = (baslik, liste) => liste.length ? `
+    <div class="uy-grup"><div class="dosya">${kacar(baslik)} · ${liste.length}</div>
+      <div class="u">${liste.map(kacar).join("<br>")}</div></div>` : "";
+  const p = modal(`
+    <h2>eLogo indirme özeti</h2>
+    ${o.hata ? `<div class="aciklama">${kacar(o.hata)}</div>` : ""}
+    <div class="icerik">
+      ${bolum("İndirilen", o.indirilen)}
+      ${bolum("Atlanan (klasörde zaten var)", o.atlanan)}
+      ${bolum("Bulunamayan", o.bulunamayan)}
+      ${bolum("Geçersiz", o.gecersiz)}
+      ${bolum("Hatalı", o.hatali)}
+      ${bolum("Birden çok eşleşme", o.coklu)}
+      ${bolum("İndirilmedi", o.indirilmedi)}
+    </div>
+    <div class="alt">
+      ${o.bulunamayan.length ? '<button class="btn-sec" id="elogoKopya">Bulunamayanları Kopyala</button>' : ""}
+      <button class="btn-primary" id="elogoTamam">Tamam</button>
+    </div>`, true);
+  p.querySelector("#elogoTamam").onclick = () => p.remove();
+  p.querySelector("#elogoTamam").focus();
+  const kopya = p.querySelector("#elogoKopya");
+  if (kopya) kopya.onclick = () => panoyaYaz(o.bulunamayan.join("\n"), p, kopya);
+}
+
+async function panoyaYaz(metin, kapsayici, dugme) {
+  try {
+    await navigator.clipboard.writeText(metin);
+  } catch (_) {
+    const t = document.createElement("textarea");
+    t.value = metin;
+    kapsayici.appendChild(t);
+    t.select();
+    document.execCommand("copy");
+    t.remove();
+  }
+  dugme.textContent = "Kopyalandı";
 }
 
 // ═══ MODAL ═══
@@ -293,6 +357,7 @@ async function basla(retry) {
   // tıklama iki worker başlatıyor, ilk çalışmanın sonucu okunmayan bir
   // kuyrukta kalıyor ve harcanan Gemini kotası boşa gidiyordu.
   $("btnBasla").disabled = true;
+  $("btnElogo").disabled = true;
   $("btnRetry").disabled = true;
 
   const cevap = retry
@@ -301,6 +366,7 @@ async function basla(retry) {
                                   kalite: D.kalite });
   if (cevap.hata) {
     $("btnBasla").disabled = false;
+    $("btnElogo").disabled = false;
     $("btnRetry").disabled = !D.atlanan;
     if (cevap.hata === "api_key") apiKeyModal();
     // bozuk alanlar.json: editöre değil dosyaya yönlendir (bozukken Kaydet reddedilir)
@@ -324,6 +390,48 @@ async function basla(retry) {
   durumTazele();
 }
 
+async function elogoBaslat() {
+  if (!D.klasor) await klasorSec();
+  if (!D.klasor) return;
+  const p = modal(`
+    <h2>eLogo'dan indir</h2>
+    <div class="icerik f"><textarea id="elogoNolar" rows="12" spellcheck="false"
+      aria-label="Fatura numaraları"></textarea></div>
+    <div class="alt">
+      <button class="btn-sec" id="elogoIptal">Vazgeç</button>
+      <button class="btn-primary" id="elogoDevam">İndir</button>
+    </div>`, true);
+  p.querySelector("#elogoNolar").focus();
+  p.querySelector("#elogoIptal").onclick = () => p.remove();
+  p.querySelector("#elogoDevam").onclick = async () => {
+    const metin = p.querySelector("#elogoNolar").value;
+    p.remove();
+    // `basla` gibi: çift tıklama köprü dönmeden kilitlensin.
+    $("btnBasla").disabled = true;
+    $("btnElogo").disabled = true;
+    const cevap = await pywebview.api.elogo_indir(D.klasor, metin);
+    if (cevap.hata) {
+      $("btnBasla").disabled = false;
+      $("btnElogo").disabled = false;
+      bilgiSatiri(cevap.hata, "err");
+      return;
+    }
+    Object.assign(D, { calisiyor: true, siradaki: 0, toplam: 0, ok: 0, uyarili: 0,
+                       atlanan: 0, paralar: {}, uyarilar: [], durduruluyor: false,
+                       baslangic: Date.now() });
+    D.ucan.clear();
+    feedTemizle();
+    $("stUcan").hidden = true;
+    $("stNe").textContent = "eLogo Girişi Bekleniyor…";
+    $("stEta").textContent = "—";
+    $("btnDurdur").disabled = false;
+    $("btnAlanlar").disabled = true;
+    $("btnRetry").disabled = true;
+    $("btnUyari").disabled = true;
+    durumTazele();
+  };
+}
+
 // ═══ AÇILIŞ ═══
 async function acilis() {
   const d = await pywebview.api.baslangic_durumu();
@@ -338,6 +446,7 @@ async function acilis() {
   $("btnKlasor").onclick = klasorSec;
   $("klasorKart").onclick = e => { if (e.target.id !== "btnKlasor") klasorSec(); };
   $("btnBasla").onclick = () => basla(false);
+  $("btnElogo").onclick = elogoBaslat;
   $("btnRetry").onclick = () => basla(true);
   $("btnDurdur").onclick = () => {
     pywebview.api.durdur();
