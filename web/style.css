@@ -388,7 +388,7 @@ tbody tr:hover{background:var(--card)}
 .el-klasor small{display:block;color:var(--dim);font-size:11px;margin-bottom:2px}
 .el-klasor .btn-sec{padding:7px 12px;font-size:12px;flex-shrink:0}
 .el-etiket{display:block;font-size:13px;font-weight:600;color:var(--tx);margin-bottom:3px}
-.el-ipucu{font-size:12px;color:var(--dim);line-height:1.5;margin-bottom:8px}
+.el-ipucu{font-size:12px;color:var(--sub);line-height:1.5;margin-bottom:8px}
 .f.mono textarea{font-family:"Cascadia Mono",Consolas,monospace;font-size:12.5px}
 .el-sayac{display:flex;gap:12px;flex-wrap:wrap;font-size:12.5px;min-height:18px}
 .el-sayac .iyi{color:var(--ok);font-weight:600}

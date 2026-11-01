@@ -42,8 +42,9 @@ def test_app_js_numara_ekrani_sozlesmesini_okuyor(tmp_path):
     api = Api(kok=tmp_path)
     assert set(api.elogo_numara_ozeti("A1")) == {"aranacak", "tekrar", "gecersiz"}
     js = pathlib.Path("web/app.js").read_text("utf-8")
-    for anahtar in ("aranacak", "tekrar", "gecersiz"):
-        assert re.search(rf"\bo\.{anahtar}\b", js), anahtar
+    # `o.gecersiz` özet ekranında da geçer; sayacınki `.join` ile ayrılır.
+    for parca in ("o.aranacak", "o.tekrar", "o.gecersiz.join"):
+        assert parca in js, parca
     assert "cevap.ok" in js and "cevap.hata" in js
 
 

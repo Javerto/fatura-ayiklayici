@@ -396,6 +396,7 @@ async function elogoBaslat() {
   $("btnBasla").disabled = true;
   $("btnElogo").disabled = true;
   $("btnAlanlar").disabled = true;
+  $("btnRetry").disabled = true;
   $("btnDurdur").disabled = false;    // Durdur, giriş penceresini de kapatır
   $("stNe").textContent = "eLogo Girişi Bekleniyor…";
   let cevap;
@@ -407,6 +408,7 @@ async function elogoBaslat() {
     $("btnBasla").disabled = false;
     $("btnElogo").disabled = false;
     $("btnAlanlar").disabled = false;
+    $("btnRetry").disabled = !D.atlanan;
     $("btnDurdur").disabled = true;
   }
   if (cevap.hata) await bilgiModal("eLogo girişi yapılamadı", cevap.hata);
@@ -466,6 +468,7 @@ function numaraEkrani() {
     dugme();
   };
   q("#elNolar").oninput = () => {
+    sira++;                               // yoldaki eski yanıt düğmeyi yeniden açmasın
     q("#elIndir").disabled = true;        // sayaç yazılanı yakalayana kadar
     clearTimeout(zamanlayici);
     zamanlayici = setTimeout(tazele, 150);
@@ -499,7 +502,7 @@ async function elogoIndir(metin) {
   D.ucan.clear();
   feedTemizle();
   $("stUcan").hidden = true;
-  $("stNe").textContent = "İndiriliyor…";
+  $("stNe").textContent = "Hazırlanıyor…";     // oturum dolduysa önce giriş gelir
   $("stEta").textContent = "—";
   $("btnDurdur").disabled = false;
   $("btnAlanlar").disabled = true;
