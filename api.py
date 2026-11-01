@@ -49,6 +49,10 @@ DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
 
 ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
 
+# Bu kadar süresi kalmayan oturum yeniden kullanılmaz. `elogo.py` oturum hatasını
+# son 60 sn'de verir: daha geniş olmalı ki yenileme aynı istemciyi geri vermesin.
+ELOGO_OTURUM_PAYI = 120
+
 GECERLI_TEMALAR = ("mocha", "macchiato", "frappe", "nord", "latte", "kagit")
 
 VARSAYILAN_BOYUT = (1040, 760)
@@ -102,6 +106,7 @@ class Api:
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
         self._elogo_pencere = None     # açık eLogo giriş penceresi
+        self._elogo_oturum = None      # (istemci, son_kullanma); yalnız bellekte
 
     # ── Arayüzden çağrılanlar ────────────────────────────────────────
 
@@ -220,20 +225,30 @@ class Api:
             self._stop_event.clear()
             self._calisiyor = True
             threading.Thread(
-                target=elogo_indir_akisi,
-                args=(gecerli, gecersiz, klasor, self._elogo_giris,
-                      self._log_q, self._stop_event),
+                target=self._elogo_calistir,
+                args=(gecerli, gecersiz, klasor),
                 daemon=True,
             ).start()
             threading.Thread(target=self._pompa, daemon=True).start()
         return {"ok": True}
 
-    def _elogo_giris(self):
-        """Giriş penceresinden oturumu alır; vazgeçilirse None.
+    def _elogo_calistir(self, gecerli, gecersiz, klasor):
+        ozet = elogo_indir_akisi(gecerli, gecersiz, klasor, self._elogo_giris,
+                                 self._log_q, self._stop_event)
+        # Portal token'ı süresinden önce iptal etmişse aynı oturumla her deneme
+        # aynı hatayı verirdi; iş durduysa sonraki indirme yeniden giriş istesin.
+        if ozet["hata"]:
+            self._elogo_oturum = None
 
-        Token yalnız dönen istemcide durur, `self`e yazılmaz. Pencereye `js_api`
-        verilmez: portal sayfası `Api` metotlarını çağıramamalı.
+    def _elogo_giris(self):
+        """Geçerli oturumun istemcisini verir, yoksa giriş penceresi açar; vazgeçilirse None.
+
+        Token yalnız bellekte, istemcinin içinde durur; uygulama kapanınca yok olur.
+        Pencereye `js_api` verilmez: portal sayfası `Api` metotlarını çağıramamalı.
         """
+        if self._elogo_oturum and time.time() < self._elogo_oturum[1] - ELOGO_OTURUM_PAYI:
+            return self._elogo_oturum[0]
+        self._elogo_oturum = None
         kapandi = threading.Event()
         pencere = webview.create_window("eLogo Girişi", ELOGO_PORTAL,
                                         width=1100, height=800)
@@ -244,7 +259,9 @@ class Api:
                 oturum = oturum_coz(self._elogo_oturumu_oku(pencere, kapandi))
                 if oturum:
                     token, customer_id, son_kullanma = oturum
-                    return ElogoIstemcisi(token, customer_id, son_kullanma=son_kullanma)
+                    istemci = ElogoIstemcisi(token, customer_id, son_kullanma=son_kullanma)
+                    self._elogo_oturum = (istemci, son_kullanma)
+                    return istemci
                 self._stop_event.wait(2)
             return None
         finally:

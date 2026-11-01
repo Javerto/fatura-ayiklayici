@@ -2,6 +2,7 @@ import json
 import pathlib
 import queue
 import threading
+import time
 
 import pytest
 
@@ -414,6 +415,11 @@ def api(tmp_path, monkeypatch):
     return a
 
 
+def api_modulu():
+    import api as modul
+    return modul
+
+
 def pencere_ac(monkeypatch, pencere):
     import api as api_modulu
     cagri = {}
@@ -505,3 +511,65 @@ def test_elogo_indir_uctan_uca_kilidi_birakir(api, tmp_path, monkeypatch):
     assert (tmp_path / "A1.xml").exists()
     assert not (tmp_path / "gecmis.json").exists()   # eLogo indirmesi geçmişe girmez
     assert gelen[-1]["d"]["indirilen"] == ["A1"]
+
+
+# ── Oturumun yeniden kullanımı ───────────────────────────────────────
+
+def test_gecerli_oturum_ikinci_indirmede_pencere_acmaz(api, monkeypatch):
+    p = SahtePencere([ham(expires_at=time.time() + 3600)])
+    pencere_ac(monkeypatch, p)
+    ilk = api._elogo_giris()
+    monkeypatch.setattr(api_modulu().webview, "create_window",
+                        lambda *a, **k: pytest.fail("pencere açılmamalıydı"))
+    assert api._elogo_giris() is ilk
+
+
+@pytest.mark.parametrize("kalan", [-5, 30, 100])
+def test_suresi_bitmek_uzere_olan_oturum_yeniden_kullanilmaz(api, monkeypatch, kalan):
+    """`elogo.py` son 60 sn'de oturum hatası verir; aynı istemci geri dönerse
+    yenileme döngüsü aynı hatayı alıp işi durdururdu."""
+    p = SahtePencere([ham(expires_at=time.time() + kalan), ham(expires_at=time.time() + 3600)])
+    pencere_ac(monkeypatch, p)
+    ilk = api._elogo_giris()
+    assert api._elogo_giris() is not ilk
+    assert p.cevaplar == []
+
+
+def test_is_hatayla_biterse_oturum_unutulur(api, tmp_path):
+    api._elogo_oturum = (Sahte(bul_hatasi=ElogoHatasi("iptal")), time.time() + 3600)
+    api._elogo_calistir(["A"], [], str(tmp_path))
+    assert api._elogo_oturum is None
+
+
+def test_is_basariyla_biterse_oturum_kalir(api, tmp_path):
+    oturum = (Sahte(), time.time() + 3600)
+    api._elogo_oturum = oturum
+    api._elogo_calistir(["A"], [], str(tmp_path))
+    assert api._elogo_oturum is oturum
+
+
+def test_oturum_nesnesi_tokeni_gostermez(api, monkeypatch):
+    pencere_ac(monkeypatch, SahtePencere([ham(expires_at=time.time() + 3600)]))
+    api._elogo_giris()
+    assert "gizli" not in repr(api._elogo_oturum)
+    assert "gizli" not in repr(vars(api))
+
+
+# ── Geliştirme profili ───────────────────────────────────────────────
+
+def test_exede_oturum_diske_yazilmaz(monkeypatch):
+    import main
+    monkeypatch.setattr(main.sys, "frozen", True, raising=False)
+    assert main.webview_ayarlari() == {}
+
+
+def test_gelistirme_profili_kalici_ve_repo_disinda(monkeypatch, tmp_path):
+    import main
+    monkeypatch.delattr(main.sys, "frozen", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    ayar = main.webview_ayarlari()
+    assert ayar["private_mode"] is False
+    profil = pathlib.Path(ayar["storage_path"])
+    assert profil.is_dir() and tmp_path in profil.parents
+    assert pathlib.Path.cwd() not in profil.parents
+    assert ayar["http_port"] > 0              # sabit porta düşmesin
