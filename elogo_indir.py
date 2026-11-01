@@ -147,7 +147,12 @@ def _eslesme_indir(no, sira, fatura, klasor, oturum, ozet, log_q):
             ad = f"{portal_no}_{_xml_vkn(gecici) or kimlik}"
             if (klasor / f"{ad}.xml").exists():
                 return atla(f"{ad}.xml")
-        os.replace(gecici, klasor / f"{ad}.xml")
+        # `replace` değil: indirme sürerken aynı adla gelen dosya ezilmesin.
+        # Windows'ta `rename` hedef varsa FileExistsError verir.
+        try:
+            os.rename(gecici, klasor / f"{ad}.xml")
+        except FileExistsError:
+            return atla(f"{ad}.xml")
     finally:
         gecici.unlink(missing_ok=True)
 
@@ -162,6 +167,8 @@ def _calistir(nolar, klasor, oturum, ozet, tamam, log_q, stop_event):
     except ElogoHatasi as e:
         raise _IsDurdu(f"{_PORTAL_MESAJI}: {e}") from None
 
+    # Yalnız portaldan yanıt alınan indirme sıfırlar: "bulunamadı" ve "geçersiz"
+    # portala istek atmaz, aradaki olmaları hataları ardışık olmaktan çıkarmaz.
     ardisik_hata = 0
     for sayac, no in enumerate(nolar, 1):
         eslesmeler = bulunan.get(no) or []

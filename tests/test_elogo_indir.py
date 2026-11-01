@@ -343,12 +343,23 @@ def test_giris_durdurulursa_hata_gosterilmez(tmp_path):
 def test_yazma_hatasi_isi_durdurur_tmp_kalmaz(tmp_path, monkeypatch):
     def patla(*a):
         raise PermissionError("kilitli")
-    monkeypatch.setattr(elogo_indir.os, "replace", patla)
+    monkeypatch.setattr(elogo_indir.os, "rename", patla)
     bulunan = {n: [oge(n, no=n)] for n in "AB"}
     ozet, _ = calistir(tmp_path, ["A", "B"], Sahte(bulunan))
     assert "yazılamadı" in ozet["hata"]
     assert ozet["indirilmedi"] == ["A", "B"]
     assert dosyalar(tmp_path) == []
+
+
+def test_indirme_sirasinda_gelen_dosya_ezilmez(tmp_path):
+    class Yarisan(Sahte):
+        def xml_indir(self, kimlik):
+            (tmp_path / "A1.xml").write_bytes(b"baskasi")
+            return super().xml_indir(kimlik)
+    ozet, _ = calistir(tmp_path, ["A1"], Yarisan({"A1": [oge("1")]}))
+    assert (tmp_path / "A1.xml").read_bytes() == b"baskasi"
+    assert ozet["atlanan"] == ["A1"] and ozet["indirilen"] == []
+    assert dosyalar(tmp_path) == ["A1.xml"]
 
 
 def test_bos_xml_fatura_hatasidir(tmp_path):
