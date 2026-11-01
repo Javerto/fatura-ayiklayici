@@ -10,6 +10,8 @@ olmuştu.
 Sınıflandırma, hatanın işlemi ne kadar durdurduğuna göre:
   - APIKeyHatasi  → tüm iş durur
   - InternetHatasi/PDFHatasi/XMLHatasi/ModelHatasi → o dosya atlanır
+  - ElogoOturumHatasi → eLogo oturumu yenilenir
+  - ElogoHatasi   → eLogo yanıtı veya isteği geçersiz; işlem durur
   - ExcelHatasi   → kayıt başarısız, düzenlemeler korunur
 """
 
@@ -32,6 +34,14 @@ class XMLHatasi(Exception):
 
 class ModelHatasi(Exception):
     """AI modelinden geçersiz veya ayrıştırılamayan yanıt — bu fatura atlanır."""
+
+
+class ElogoOturumHatasi(Exception):
+    """eLogo oturumu geçersiz veya süresi dolmak üzere."""
+
+
+class ElogoHatasi(Exception):
+    """eLogo isteği veya yanıtı geçersiz."""
 
 
 class ExcelHatasi(Exception):

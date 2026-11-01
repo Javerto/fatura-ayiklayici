@@ -82,6 +82,12 @@ Sığ modül: arayüzü neredeyse gerçekleştirimi kadar karmaşık olan modül
 sınırlama, yeniden deneme ve hata sınıflandırma durur; çağıran bunların hiçbirini
 bilmez. "Model" burada **yapay zeka modeli** demektir — alan modeli değil.
 
+**eLogo istemcisi** (`elogo.ElogoIstemcisi`) — eLogo iç API'sine yapılan tüm
+listeleme ve UBL XML indirme isteklerinin tek kapısı. Arayüzü dar:
+`fatura_bul(nolar) -> dict` ve `xml_indir(invoice_id) -> bytes`. Ağ göndericisi,
+oturum süresi, JSON/base64 doğrulaması ve Türkçe hata sınıflandırması ardında
+durur; indirme döngüsü bu istemcinin dışındadır.
+
 **Sınırlayıcı** (`gemini.Sinirlayici`) — Dakikadaki istek sayısını Gemini
 ücretsiz kotasının altında tutar. Durumu **süreç ömürlüdür**, çalışma ömürlü
 değil: kota API anahtarına aittir, kullanıcı durdurup yeniden başlattığında
