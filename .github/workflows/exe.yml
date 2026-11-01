@@ -1,0 +1,48 @@
+# EXE her PR'da ve master'a her push'ta derlenir. Testler paketlemeyi göremez:
+# PyInstaller bir modülü atlarsa testler geçer ama EXE açılmaz. Görünüm ve gerçek
+# eLogo girişi burada denenmez, onlar için birinin EXE'yi açması gerekir.
+name: exe
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  derle:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: EXE'yi derle
+        shell: cmd
+        run: .\build.bat
+      - name: Paketi dene
+        shell: pwsh
+        run: |
+          $p = Start-Process dist\FaturaAyiklayici.exe -ArgumentList '--saglik' -PassThru
+          $null = $p.Handle   # ExitCode'un okunabilmesi için tutulmalı
+          # Çöken --windowed EXE hata penceresinde bekler: zaman aşımı = başarısız.
+          if (-not $p.WaitForExit(180000)) {
+            Stop-Process -Id $p.Id -Force
+            Write-Error "EXE sure icinde cikmadi; acilista cokmus olabilir."
+            exit 1
+          }
+          Get-Content "$env:TEMP\FaturaAyiklayici-saglik.txt" -Encoding utf8 -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) {
+            Write-Error "Saglik kontrolu basarisiz: cikis kodu $($p.ExitCode)"
+            exit 1
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FaturaAyiklayici
+          path: dist/FaturaAyiklayici.exe
+          if-no-files-found: error
+          retention-days: 30

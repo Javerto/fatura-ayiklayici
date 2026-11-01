@@ -10,7 +10,8 @@ if exist "icon.ico" del "icon.ico"
 python -c "import struct, base64; png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAWElEQVR42mNgGAWDFeiHTPtPLh51wIA7YMGuF/8H3AEUO4IaDqDIEdRyANmOoMQBVEmYow5A1gwEd/Dh0SgYTQPEpI3RKBhNA6NRMOqAUQeMOmC0r4kLAAAnW4FDe82NqwAAAABJRU5ErkJggg=='); ico = struct.pack('<HHH', 0, 1, 1); ico += struct.pack('<BBBBHHII', 32, 32, 0, 0, 1, 32, len(png), 22); ico += png; open('icon.ico', 'wb').write(ico); print('icon.ico olusturuldu.')"
 if not exist "icon.ico" (
     echo HATA: Ikon olusturulamadi!
-    pause & exit /b 1
+    if not defined CI pause
+    exit /b 1
 )
 
 echo [2/5] Temiz sanal ortam olusturuluyor...
@@ -18,17 +19,21 @@ if exist ".venv_build" rmdir /s /q ".venv_build"
 python -m venv .venv_build
 if errorlevel 1 (
     echo HATA: Sanal ortam olusturulamadi.
-    pause & exit /b 1
+    if not defined CI pause
+    exit /b 1
 )
 
 echo [3/5] Sadece gerekli kutuphaneler kuruluyor...
-.venv_build\Scripts\pip install --quiet google-genai pymupdf python-dotenv openpyxl pywebview pyinstaller
+.venv_build\Scripts\pip install --quiet google-genai "pymupdf<2" python-dotenv openpyxl pywebview pyinstaller
 if errorlevel 1 (
     echo HATA: Kutuphane kurulumu basarisiz.
-    pause & exit /b 1
+    if not defined CI pause
+    exit /b 1
 )
 
 echo [4/5] EXE olusturuluyor...
+rem Eski EXE kalirsa basarisiz derleme basarili gorunur.
+if exist "dist\FaturaAyiklayici.exe" del "dist\FaturaAyiklayici.exe"
 .venv_build\Scripts\pyinstaller ^
     --onefile ^
     --windowed ^
@@ -60,6 +65,11 @@ if exist "dist\FaturaAyiklayici.exe" (
     echo Ilk acilista API key girilmesi gerekecektir.
 ) else (
     echo HATA: EXE olusturulamadi. Yukaridaki hata mesajini inceleyin.
+    echo.
+    if not defined CI pause
+    exit /b 1
 )
 echo.
-pause
+rem CI ortaminda pause sonsuza kadar bekler; GitHub Actions CI degiskenini ayarlar.
+if not defined CI pause
+exit /b 0
