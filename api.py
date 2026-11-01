@@ -26,13 +26,13 @@ import gemini
 import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
 from excel_utils import excel_olustur
-from extraction import pdf_den_veri_cek, veri_dogrula
+from extraction import pdf_deger_bul, pdf_den_veri_cek, veri_dogrula, xml_gorunumu
 from elogo import ElogoIstemcisi
 from elogo_indir import (OIDC_ANAHTARI, indir as elogo_indir_akisi,
                          numara_ozeti, numaralari_ayristir, oturum_coz)
 from hatalar import (APIKeyHatasi, ElogoHatasi, ExcelHatasi, InternetHatasi, ModelHatasi,
                      PDFHatasi)
-from review import (form_satira_uygula, nihai_satirlar,
+from review import (arama_metinleri, form_satira_uygula, nihai_satirlar,
                     ogrenilecek_alanlar, satir_form_degerleri)
 from worker import is_listesi, worker
 
@@ -59,6 +59,12 @@ VARSAYILAN_BOYUT = (1040, 760)
 EN_KUCUK_BOYUT   = (760, 560)
 
 load_dotenv(dotenv_path=ENV_DOSYASI)
+
+
+def _xml_mi(satir: dict) -> bool:
+    """Satırın kaynağı yalnızca XML mi? (PDF'i olan XML'de dosya_yolu PDF'tir.)"""
+    yol = str(satir.get("dosya_yolu") or "")
+    return yol.lower().endswith(".xml") and os.path.exists(yol)
 
 
 def pencere_boyutu() -> tuple[int, int]:
@@ -105,6 +111,9 @@ class Api:
         self._baslatma_kilidi = threading.Lock()   # `basla` kontrol-ve-ata
         self._pdf_doc = None           # açık önizleme belgesi (yeniden kullanılır)
         self._pdf_yol = None
+        # pywebview her JS çağrısını ayrı iş parçacığında çalıştırır; MuPDF ise
+        # aynı belgede eşzamanlı kullanıma dayanıklı değildir.
+        self._pdf_kilit = threading.RLock()
         self._elogo_pencere = None     # açık eLogo giriş penceresi
         self._elogo_oturum = None      # (istemci, son_kullanma); yalnız bellekte
 
@@ -596,36 +605,65 @@ class Api:
     def _onizlemeyi_kapat(self):
         """Açık PDF'i bırak — yoksa MuPDF dosyayı süreç boyunca kilitli tutar
         ve kullanıcı o faturayı Explorer'da taşıyamaz/silemez."""
-        if self._pdf_doc is not None:
-            try:
-                self._pdf_doc.close()
-            except Exception:
-                pass
-            self._pdf_doc = None
-            self._pdf_yol = None
+        with self._pdf_kilit:
+            if self._pdf_doc is not None:
+                try:
+                    self._pdf_doc.close()
+                except Exception:
+                    pass
+                self._pdf_doc = None
+                self._pdf_yol = None
+
+    def _pdf_belgesi(self, satir: dict):
+        """Satırın açık PDF'i; PDF değilse/yoksa None. Kilit altında çağrılmalı."""
+        yol = str(satir.get("dosya_yolu") or "")
+        if not yol.lower().endswith(".pdf") or not os.path.exists(yol):
+            return None
+        if self._pdf_yol != yol:
+            self._onizlemeyi_kapat()
+            self._pdf_doc = fitz.open(yol)
+            self._pdf_yol = yol
+        return self._pdf_doc
 
     def onizleme(self, i: int, sayfa: int, zoom: float) -> dict:
-        """Faturanın PDF sayfasını PNG olarak döndürür (base64)."""
+        """PDF sayfası: {png (base64), sayfa, toplam}; XML görüntüsü: {html}."""
         satir = self._satir(i)
         if satir is None:
             return {"hata": "Önizleme yok"}
-        yol = str(satir.get("dosya_yolu") or "")
-        if not yol.lower().endswith(".pdf") or not os.path.exists(yol):
-            return {"hata": "Bu fatura için PDF yok"}
+        if _xml_mi(satir):
+            html = xml_gorunumu(str(satir["dosya_yolu"]))
+            return {"html": html} if html else {
+                "hata": "Bu XML'de görüntü şablonu yok.\n“Dışarıda aç” ile bakabilirsiniz."}
         try:
-            if self._pdf_yol != yol:
-                if self._pdf_doc is not None:
-                    self._pdf_doc.close()
-                self._pdf_doc = fitz.open(yol)
-                self._pdf_yol = yol
-            n = self._pdf_doc.page_count
-            sayfa = max(0, min(int(sayfa), n - 1))
-            zoom = max(0.5, min(3.0, float(zoom)))
-            pix = self._pdf_doc[sayfa].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+            with self._pdf_kilit:
+                doc = self._pdf_belgesi(satir)
+                if doc is None:
+                    return {"hata": "Bu fatura için PDF yok"}
+                n = doc.page_count
+                sayfa = max(0, min(int(sayfa), n - 1))
+                zoom = max(0.5, min(3.0, float(zoom)))
+                pix = doc[sayfa].get_pixmap(matrix=fitz.Matrix(zoom, zoom))
             return {"png": base64.b64encode(pix.tobytes("png")).decode(),
                     "sayfa": sayfa, "toplam": n}
         except Exception as e:
             return {"hata": f"Önizleme yüklenemedi: {e}"}
+
+    def deger_bul(self, i: int, alan: str, metin: str, sayfa: int = 0) -> dict:
+        """Form değerinin kaynak belgedeki yeri: {sayfa, kutular}; yoksa {}."""
+        satir = self._satir(i)
+        if satir is None or not isinstance(alan, str) or not isinstance(metin, str):
+            return {}
+        metinler, tam = arama_metinleri(metin, self._sema.tip_haritasi.get(alan, "metin"))
+        if not metinler:
+            return {}
+        if _xml_mi(satir):          # görüntü çerçevede; arama orada, arayüzde yapılır
+            return {"metinler": metinler, "tam": tam}
+        try:
+            with self._pdf_kilit:
+                doc = self._pdf_belgesi(satir)
+                return (doc and pdf_deger_bul(doc, metinler, tam, int(sayfa))) or {}
+        except Exception:
+            return {}          # vurgu yardımcı bir özellik; hatası ekranı bozmamalı
 
     def dosya_ac(self, i: int) -> bool:
         """Faturanın kaynak dosyasını sistem uygulamasında açar."""
@@ -756,6 +794,7 @@ class Api:
                 "uyarilar": veri_dogrula(satir, baska_nolar, self._sema),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
+                "xml":      _xml_mi(satir),
                 "kaynak":   fatura.kaynak(satir),
             })
         return {"t": "review", "satirlar": satirlar,

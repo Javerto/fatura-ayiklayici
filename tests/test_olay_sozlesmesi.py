@@ -108,7 +108,7 @@ def test_review_olayinin_anahtarlari(tmp_path):
     assert set(olay) == {"t", "satirlar", "alanlar", "mevcut_sayi",
                          "kesildi", "atlanan", "sema_farki"}
     assert set(olay["satirlar"][0]) == {"i", "form", "uyarilar", "dosya",
-                                        "pdf", "kaynak"}
+                                        "pdf", "xml", "kaynak"}
     assert olay["sema_farki"] is None       # yükte yoksa uyarı yok
 
 

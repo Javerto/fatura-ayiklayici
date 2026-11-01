@@ -4,8 +4,9 @@ PDF ve XML faturalardan veri çıkarma modülü.
 
 import fitz
 import xml.etree.ElementTree as ET
-import json, os, re, pathlib
+import base64, json, os, re, pathlib
 from datetime import datetime as _dt
+from lxml import etree as _lxml
 
 from hatalar import PDFHatasi, XMLHatasi, ModelHatasi
 import sema as _sema
@@ -277,12 +278,46 @@ def pdf_to_images(dosya_yolu: str, zoom: float = 1.5) -> list[bytes]:
     return images
 
 
+NS = {
+    "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
+    "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
+}
+_XSL = "{http://www.w3.org/1999/XSL/Transform}"
+
+
+def xml_gorunumu(xml_yolu: str) -> str | None:
+    """XML'e gömülü XSLT şablonuyla faturanın görüntüsünü (HTML) üretir; olmazsa None.
+
+    Şablon faturayı kesenden gelir, yabancı kod sayılır: varlık çözümleme, ağ ve
+    dönüşümdeki dosya erişimi kapalı. Çıktı da güvenilmez; arayüz onu betiksiz bir
+    çerçevede gösterir. Tarayıcının XSLTProcessor'ı kullanılmıyor: Chromium kaldırıyor.
+
+    ponytail: dönüşümde süre sınırı yok; kasıtlı sonsuz döngülü şablon bir iş
+    parçacığını meşgul eder (arayüz donmaz). Sorun olursa ayrı süreçte çalıştırılır.
+    """
+    ayristirici = _lxml.XMLParser(resolve_entities=False, no_network=True)
+    try:
+        fatura = _lxml.parse(xml_yolu, ayristirici)
+    except (_lxml.LxmlError, OSError):
+        return None
+    for ek in fatura.getroot().iterfind(
+            "cac:AdditionalDocumentReference/cac:Attachment/cbc:EmbeddedDocumentBinaryObject", NS):
+        try:
+            sablon = _lxml.fromstring(base64.b64decode(ek.text or ""), ayristirici)
+            if sablon.tag not in (_XSL + "stylesheet", _XSL + "transform"):
+                continue
+            # Erişim denetimi yalnız dönüşümde işler; bunlar derlenirken okunur.
+            if next(sablon.iter(_XSL + "include", _XSL + "import"), None) is not None:
+                return None
+            donustur = _lxml.XSLT(sablon, access_control=_lxml.XSLTAccessControl.DENY_ALL)
+            return str(donustur(fatura)) or None
+        except (_lxml.LxmlError, ValueError, TypeError):
+            continue          # bozuk ek veya şablon: sıradakine bak
+    return None
+
+
 def xml_den_veri_cek(xml_yolu: str, pdf_yolu: str | None) -> dict:
     """UBL XML faturadan veri çıkarır. pdf_yolu None ise sadece XML vardır."""
-    NS = {
-        "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
-        "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
-    }
     try:
         root = ET.parse(xml_yolu).getroot()
     except ET.ParseError as e:
@@ -369,6 +404,37 @@ def pdf_text_ayikla(dosya_yolu: str) -> str:
         return text.strip()
     except Exception:
         return ""
+
+
+def _tam_kelime(kutu, metin: str, kelimeler: list) -> bool:
+    """Bulunan kutu, başka bir sayının/kelimenin parçası değil mi?"""
+    desen = rf"(?<![\w.,]){re.escape(metin)}(?!\w|[.,]\d)"
+    x, y = (kutu.x0 + kutu.x1) / 2, (kutu.y0 + kutu.y1) / 2
+    return any(k[0] <= x <= k[2] and k[1] <= y <= k[3]
+               and re.search(desen, k[4], re.IGNORECASE) for k in kelimeler)
+
+
+def pdf_deger_bul(doc, metinler: list[str], tam: bool, ilk_sayfa: int = 0) -> dict | None:
+    """Değerin geçtiği ilk sayfayı ve kutularını döndürür; yoksa None.
+
+    Kutular sayfaya oranlı `[x, y, genişlik, yükseklik]`: arayüz bunları görselin
+    üstüne yüzdeyle çizer, zoom değişince yeniden sormak gerekmez. Açık sayfaya
+    öncelik verilir ki kullanıcı başka bir sayfaya gereksiz yere atılmasın.
+    """
+    ilk = max(0, min(ilk_sayfa, doc.page_count - 1))
+    for s in [ilk, *(x for x in range(doc.page_count) if x != ilk)]:
+        sayfa = doc[s]
+        kelimeler = sayfa.get_text("words") if tam else []
+        for metin in metinler:
+            kutular = [k for k in sayfa.search_for(metin)
+                       if not tam or _tam_kelime(k, metin, kelimeler)]
+            if kutular:
+                g, y = sayfa.rect.width, sayfa.rect.height
+                # search_for dönmemiş sayfanın koordinatını verir, görsel ise dönmüştür.
+                gorunen = [k * sayfa.rotation_matrix for k in kutular]
+                return {"sayfa": s, "kutular": [[k.x0 / g, k.y0 / y, k.width / g, k.height / y]
+                                                for k in gorunen]}
+    return None
 
 
 def pdf_den_veri_cek(dosya_yolu: str, istemci, zoom: float = 1.5,

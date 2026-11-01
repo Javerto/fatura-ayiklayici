@@ -24,7 +24,7 @@ if errorlevel 1 (
 )
 
 echo [3/5] Sadece gerekli kutuphaneler kuruluyor...
-.venv_build\Scripts\pip install --quiet google-genai "pymupdf<2" python-dotenv openpyxl pywebview pyinstaller
+.venv_build\Scripts\pip install --quiet google-genai "pymupdf<2" python-dotenv openpyxl pywebview lxml pyinstaller
 if errorlevel 1 (
     echo HATA: Kutuphane kurulumu basarisiz.
     if not defined CI pause
@@ -45,6 +45,7 @@ if exist "dist\FaturaAyiklayici.exe" del "dist\FaturaAyiklayici.exe"
     --hidden-import fitz ^
     --hidden-import openpyxl ^
     --hidden-import dotenv ^
+    --hidden-import lxml.etree ^
     --hidden-import clr_loader ^
     main.py
 
