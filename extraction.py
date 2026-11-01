@@ -371,6 +371,37 @@ def pdf_text_ayikla(dosya_yolu: str) -> str:
         return ""
 
 
+def _tam_kelime(kutu, metin: str, kelimeler: list) -> bool:
+    """Bulunan kutu, başka bir sayının/kelimenin parçası değil mi?"""
+    desen = rf"(?<![\w.,]){re.escape(metin)}(?!\w|[.,]\d)"
+    x, y = (kutu.x0 + kutu.x1) / 2, (kutu.y0 + kutu.y1) / 2
+    return any(k[0] <= x <= k[2] and k[1] <= y <= k[3]
+               and re.search(desen, k[4], re.IGNORECASE) for k in kelimeler)
+
+
+def pdf_deger_bul(doc, metinler: list[str], tam: bool, ilk_sayfa: int = 0) -> dict | None:
+    """Değerin geçtiği ilk sayfayı ve kutularını döndürür; yoksa None.
+
+    Kutular sayfaya oranlı `[x, y, genişlik, yükseklik]`: arayüz bunları görselin
+    üstüne yüzdeyle çizer, zoom değişince yeniden sormak gerekmez. Açık sayfaya
+    öncelik verilir ki kullanıcı başka bir sayfaya gereksiz yere atılmasın.
+    """
+    ilk = max(0, min(ilk_sayfa, doc.page_count - 1))
+    for s in [ilk, *(x for x in range(doc.page_count) if x != ilk)]:
+        sayfa = doc[s]
+        kelimeler = sayfa.get_text("words") if tam else []
+        for metin in metinler:
+            kutular = [k for k in sayfa.search_for(metin)
+                       if not tam or _tam_kelime(k, metin, kelimeler)]
+            if kutular:
+                g, y = sayfa.rect.width, sayfa.rect.height
+                # search_for dönmemiş sayfanın koordinatını verir, görsel ise dönmüştür.
+                gorunen = [k * sayfa.rotation_matrix for k in kutular]
+                return {"sayfa": s, "kutular": [[k.x0 / g, k.y0 / y, k.width / g, k.height / y]
+                                                for k in gorunen]}
+    return None
+
+
 def pdf_den_veri_cek(dosya_yolu: str, istemci, zoom: float = 1.5,
                      metin: str | None = None, sema=None) -> dict:
     """

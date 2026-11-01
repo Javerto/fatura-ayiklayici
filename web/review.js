@@ -6,6 +6,8 @@ const R = {
   satirlar: [], alanlar: [], secili: 0,
   haric: new Set(), hatirla: new Set(), duzenlemeler: {},
   sadeceUyarili: false, zoom: 1.0, sayfa: 0, toplamSayfa: 0,
+  sigdir: false, yukleNo: 0,   // açılışta panele sığdır; yalnız son önizleme isteği geçerli
+  vurgu: null, vurguNo: 0,     // {sayfa, kutular}; yalnız son arama geçerli
 };
 
 // Alan gruplaması yalnızca görsel; anahtar/etiket Python'dan gelir.
@@ -131,7 +133,9 @@ function rvSatirSec(i) {
   $("rvHaric").checked = R.haric.has(i);
   $("rvDosya").textContent = s.dosya;
   R.sayfa = 0;
-  rvOnizlemeYukle(true);          // yeni fatura → panele sığdır
+  R.sigdir = true;                // yeni fatura → panele sığdır
+  rvVurguTemizle();
+  rvOnizlemeYukle();
   document.querySelectorAll(".rvrow").forEach(r =>
     r.classList.toggle("on", +r.dataset.i === i));
 }
@@ -173,11 +177,12 @@ async function rvUygula() {
 }
 
 // ═══ ÖNİZLEME ═══
-/** sigdir=true ise ilk çizimden sonra zoom panel genişliğine ayarlanıp
+/** R.sigdir ise ilk çizimden sonra zoom panel genişliğine ayarlanıp
     bir kez daha çizilir (A4 %100'de panele sığmıyor). */
-async function rvOnizlemeYukle(sigdir = false) {
+async function rvOnizlemeYukle() {
   const s = R.satirlar.find(x => x.i === R.secili);
   const pv = $("rvPv");
+  const no = ++R.yukleNo;
   if (!s || !s.pdf) {
     pv.innerHTML = '<div class="yok">Bu fatura için PDF önizleme yok<br>(XML veya dosya bulunamadı)</div>';
     $("rvSayfa").textContent = "— / —";
@@ -186,29 +191,74 @@ async function rvOnizlemeYukle(sigdir = false) {
     return;
   }
   const c = await pywebview.api.onizleme(s.i, R.sayfa, R.zoom);
-  // Yanıt gecikirken başka faturaya geçilmiş olabilir. Bunu kontrol etmezsek
-  // panelde A faturasının formu, B faturasının belgesi durur — kullanıcı
-  // yanlış belgeye bakarak onay verir.
-  if (R.secili !== s.i) return;
+  // Yanıt gecikirken başka faturaya, sayfaya veya zoom'a geçilmiş olabilir. Bunu
+  // kontrol etmezsek panelde A faturasının formu, B faturasının belgesi durur —
+  // kullanıcı yanlış belgeye bakarak onay verir.
+  if (no !== R.yukleNo) return;
   if (c.hata) { pv.innerHTML = `<div class="yok">${kacar(c.hata)}</div>`; return; }
 
-  pv.innerHTML = `<img src="data:image/png;base64,${c.png}" alt="">`;
+  pv.innerHTML = `<div class="pv-sayfa"><img src="data:image/png;base64,${c.png}" alt=""></div>`;
   R.sayfa = c.sayfa; R.toplamSayfa = c.toplam;
   $("rvSayfa").textContent = `${c.sayfa + 1} / ${c.toplam}`;
   $("rvZoom").textContent = `%${Math.round(R.zoom * 100)}`;
   $("rvOnceki").disabled = c.sayfa === 0;
   $("rvSonraki").disabled = c.sayfa >= c.toplam - 1;
 
-  if (sigdir) {
-    const img = pv.querySelector("img");
-    // Çözülmeden naturalWidth 0: hedef sonsuz çıkar, zoom %300'e kaçıp sayfa kesilir.
-    await img.decode().catch(() => {});
-    if (R.secili !== s.i || !img.naturalWidth) return;
+  // Çözülmeden görselin boyutu 0: sığdırma sonsuz zoom hesaplar (%300'e kaçar),
+  // işaretin yeri de ölçülemez ve panel ona kaydırılamaz.
+  const img = pv.querySelector("img");
+  await img.decode().catch(() => {});
+  if (no !== R.yukleNo || !img.naturalWidth) return;
+
+  if (R.sigdir) {
+    R.sigdir = false;
     const sayfaGenislik = img.naturalWidth / R.zoom;      // 1× hâlindeki genişlik
     const hedef = (pv.clientWidth - 30) / sayfaGenislik;
     const yeni = Math.max(0.5, Math.min(3.0, hedef));
-    if (Math.abs(yeni - R.zoom) > 0.05) { R.zoom = yeni; await rvOnizlemeYukle(); }
+    if (Math.abs(yeni - R.zoom) > 0.05) { R.zoom = yeni; return rvOnizlemeYukle(); }
   }
+  rvVurguCiz();
+}
+
+// ═══ DEĞERİ BELGEDE GÖSTERME ═══
+function rvVurguTemizle() {
+  R.vurgu = null;
+  R.vurguNo++;                    // yoldaki arama sonucu artık geçersiz
+  $("rvVurguNot").hidden = true;
+}
+
+/** Alana girilince değeri kaynak belgede bulur, gerekirse sayfasına geçip işaretler. */
+async function rvVurgula(alan, metin) {
+  const s = R.satirlar.find(x => x.i === R.secili);
+  if (!s || !s.pdf) return;
+  const no = ++R.vurguNo;
+  const c = await pywebview.api.deger_bul(s.i, alan, metin, R.sayfa);
+  if (no !== R.vurguNo) return;
+  R.vurgu = c.kutular ? c : null;
+  $("rvVurguNot").hidden = !!c.kutular || !metin.trim();
+  $("rvVurguNot").textContent = s.kaynak === "OCR"
+    ? "Taranmış belgede değer işaretlenemez" : "Bu değer belgede bulunamadı";
+  if (R.vurgu && R.vurgu.sayfa !== R.sayfa) {
+    R.sayfa = R.vurgu.sayfa;
+    return rvOnizlemeYukle();     // çizim yüklemenin sonunda yapılır
+  }
+  rvVurguCiz();
+}
+
+/** Kutular oransal: görsele yüzdeyle oturur, zoom değişince hesap gerekmez. */
+function rvVurguCiz() {
+  const pv = $("rvPv"), kap = pv.querySelector(".pv-sayfa");
+  if (!kap) return;
+  kap.querySelectorAll(".vurgu").forEach(e => e.remove());
+  if (!R.vurgu || R.vurgu.sayfa !== R.sayfa) return;
+  kap.insertAdjacentHTML("beforeend", R.vurgu.kutular.map(([x, y, g, h]) =>
+    `<div class="vurgu" style="left:${x * 100}%;top:${y * 100}%;width:${g * 100}%;height:${h * 100}%"></div>`
+  ).join(""));
+  // scrollIntoView değil: o, dış kapları da kaydırıp ekran düzenini kaçırabilir.
+  const b = kap.querySelector(".vurgu").getBoundingClientRect();
+  const p = pv.getBoundingClientRect();
+  pv.scrollBy(b.left + b.width / 2 - p.left - p.width / 2,
+              b.top + b.height / 2 - p.top - p.height / 2);
 }
 
 // ═══ UYARILAR ARASI GEZİNME ═══
@@ -316,9 +366,15 @@ function reviewKur() {
   $("rvForm").addEventListener("focusout", e => {
     if (e.target.dataset && e.target.dataset.alan) rvUygula();
   });
+  $("rvForm").addEventListener("focusin", e => {
+    if (e.target.dataset && e.target.dataset.alan)
+      rvVurgula(e.target.dataset.alan, e.target.value);
+  });
   $("rvForm").addEventListener("change", e => {
     if (e.target.id === "rvHatirla") {
       e.target.checked ? R.hatirla.add(R.secili) : R.hatirla.delete(R.secili);
+    } else if (e.target.dataset && e.target.dataset.alan && document.activeElement === e.target) {
+      rvVurgula(e.target.dataset.alan, e.target.value);   // Enter ile değiştirildi
     }
   });
   $("rvHaric").onchange = e => {

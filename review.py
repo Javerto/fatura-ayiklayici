@@ -17,6 +17,31 @@ def _metin(deger) -> str:
     return str(deger)
 
 
+def arama_metinleri(deger: str, tip: str) -> tuple[list[str], bool]:
+    """Form metninin kaynak belgede yazılmış olabileceği biçimler ve tam eşleşme gereği.
+
+    Form `1320.5` tutar, belgede `1.320,50` yazar. Sayılar ve kısa metinler başka
+    bir kelimenin içinde eşleşmemeli: `100,00`, `1.100,00`'ın parçası değildir.
+    Çevrilemeyen değer (kullanıcı yazarken olabilir) olduğu gibi aranır.
+    """
+    ham = (deger or "").strip()
+    if not ham:
+        return [], False
+    metinler = [ham]
+    sayi = to_float(ham) if tip == "sayi" else None
+    tarih = tarih_parse(ham) if tip == "tarih" else None
+    if sayi is not None:
+        ingiliz = f"{sayi:,.2f}"
+        turk = ingiliz.translate(str.maketrans(",.", ".,"))
+        metinler = [turk, turk.replace(".", ""), ingiliz, ingiliz.replace(",", "")]
+        metinler += ([f"{int(sayi):,}".replace(",", "."), f"{int(sayi):,}", str(int(sayi))]
+                     if sayi.is_integer() else [str(sayi).replace(".", ","), str(sayi)])
+    elif isinstance(tarih, datetime):        # çevrilemeyince tarih_parse metni geri verir
+        metinler = [tarih.strftime(b) for b in
+                    ("%d.%m.%Y", "%d-%m-%Y", "%d/%m/%Y", "%Y-%m-%d")]
+    return list(dict.fromkeys(metinler)), tip == "sayi" or len(ham) <= 4
+
+
 def satir_form_degerleri(row: dict, sema=None) -> dict:
     """Satırı, form alanlarına yazılacak metin değerlerine çevirir."""
     return {anahtar: _metin(row.get(anahtar))
