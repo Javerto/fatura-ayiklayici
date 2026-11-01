@@ -448,6 +448,23 @@ def _sil(yol: str):
         pass
 
 
+def fatura_sil(cikti: str, dosya_adi: str) -> int:
+    """Verilen dosya adına ait faturaları Excel'den siler, silinen sayısını döndürür."""
+    try:
+        wb = load_workbook(cikti)
+        ws = wb.active
+        silinen = 0
+        for sira in range(2, ws.max_row + 1):
+            yol = ws.cell(row=sira, column=15).value
+            if yol and dosya_adi in yol:
+                ws.delete_rows(sira)
+                silinen += 1
+        wb.save(cikti)
+        return silinen
+    except Exception:
+        return 0
+
+
 def _ozet_sayfasi_yaz(wb, satirlar: list):
     """Çalışma kitabına 'Özet' sayfası ekler (genel/aylık/şirket blokları)."""
     o = ozet_hesapla(satirlar)
