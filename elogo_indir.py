@@ -9,213 +9,209 @@ import uuid
 from extraction import _duzelt_fatura_no, xml_den_veri_cek
 from hatalar import ElogoHatasi, ElogoOturumHatasi
 
+OIDC_ANAHTARI = "oidc.user:https://identityserver-edevlet.elogo.com.tr:portal.customer"
+ART_ARDA_HATA_SINIRI = 3
+ART_ARDA_YENILEME_SINIRI = 3
+_PORTAL_MESAJI = "eLogo yanıtı beklenmedik, portal değişmiş olabilir"
+
+
+class _IsDurdu(Exception):
+    """Kalan faturaları anlamsız kılan hata; mesajı özete gider."""
+
 
 def numaralari_ayristir(metin):
-    gecersiz, gecerli, gorulen = [], [], set()
+    """Yapıştırılan metin -> (aranacak numaralar, geçersiz numaralar)."""
+    gecerli, gecersiz, gorulen = [], [], set()
     for satir in str(metin).splitlines():
         no = satir.strip()
         if not no:
             continue
         no, _ = _duzelt_fatura_no(no)
-        if len(no) > 16:
-            gecersiz.append(no)
-            continue
         anahtar = no.casefold()
-        if anahtar not in gorulen:
-            gorulen.add(anahtar)
-            gecerli.append(no)
+        if anahtar in gorulen:
+            continue
+        gorulen.add(anahtar)
+        (gecersiz if len(no) > 16 else gecerli).append(no)
     return gecerli, gecersiz
 
 
 def oturum_coz(ham):
+    """sessionStorage kaydı -> (token, customer_id, son_kullanma); giriş bitmediyse None.
+
+    Müşteri alanı beklenen şekilde değilse tahmin yürütülmez: çok firmalı
+    hesapta alanın şekli ölçülmedi, yanlış firmada aramak "bulunamadı" der.
+    """
     try:
         veri = json.loads(ham)
-        token = veri.get("access_token")
-        if not token:
-            return None
-        profil = veri["profile"]
-        atanmis = json.loads(profil["assignedCustomers"])
-        if not isinstance(atanmis, dict):
-            raise ValueError
-        customer_id = atanmis.get("CustomerId")
-        uuid.UUID(str(customer_id))
-        return token, str(customer_id), veri["expires_at"]
-    except (json.JSONDecodeError, TypeError, KeyError, AttributeError,
-            ValueError, OverflowError):
-        if "token" not in locals() or not token:
-            return None
-        raise ElogoHatasi("eLogo müşteri bilgisi beklenen biçimde değil; tek müşteri hesabıyla tekrar giriş yapın.")
-
-
-def _ozet():
-    return {"indirilen": [], "atlanan": [], "bulunamayan": [],
-            "gecersiz": [], "hatali": [], "coklu": [],
-            "indirilmedi": [], "hata": None, "durduruldu": False}
-
-
-def _olay(log_q, tag, veri):
-    if log_q is not None:
-        log_q.put((tag, veri))
-
-
-def _guvenli_parca(deger):
-    return re.sub(r"[^A-Za-z0-9_-]", "", str(deger)) or "bilinmeyen"
-
-
-def indir(nolar, gecersiz, klasor, istemci_al, log_q, stop_event):
-    ozet = _ozet()
-    ozet["gecersiz"].extend(gecersiz)
-    for no in gecersiz:
-        _olay(log_q, "elogo_satir", {"no": no, "durum": "gecersiz", "mesaj": "Numara çok uzun."})
-    if not nolar:
-        _olay(log_q, "elogo_ozet", ozet)
-        return ozet
-
-    istemci = None
-    arama = {}
-    hata_sayaci = 0
-    yenileme = 0
+    except (TypeError, ValueError):
+        return None
+    token = veri.get("access_token") if isinstance(veri, dict) else None
+    if not token:
+        return None
     try:
-        istemci = istemci_al()
-        if istemci is None:
-            ozet["hata"] = "eLogo girişinden vazgeçildi."
-            ozet["indirilmedi"].extend(nolar)
-            return ozet
+        musteri = json.loads(veri["profile"]["assignedCustomers"])
+        customer_id = str(uuid.UUID(musteri["CustomerId"]))
+        son_kullanma = veri["expires_at"]
+        if isinstance(son_kullanma, bool) or not isinstance(son_kullanma, (int, float)):
+            raise ValueError
+    except (KeyError, TypeError, ValueError, AttributeError):
+        # `from None`: JSON hatasının `doc` alanı oturum verisini taşır.
+        raise ElogoHatasi("eLogo hesap bilgisi beklenen biçimde değil. "
+                          "Birden çok firmalı hesaplar henüz desteklenmiyor.") from None
+    return token, customer_id, son_kullanma
+
+
+class _Oturum:
+    """Geçerli istemciyi tutar; oturum düşünce yeniden giriş ister ve çağrıyı tekrarlar."""
+
+    def __init__(self, istemci_al, log_q):
+        self._al = istemci_al
+        self._log_q = log_q
+        self._istemci = None
+        self._yenileme = 0
+
+    def cagir(self, islem):
         while True:
+            if self._istemci is None:
+                self._istemci = self._giris()
             try:
-                arama = istemci.fatura_bul(nolar)
-                break
+                sonuc = islem(self._istemci)
             except ElogoOturumHatasi:
-                yenileme += 1
-                _olay(log_q, "warn", "eLogo oturumu sona erdi, tekrar giriş yapın")
-                if yenileme >= 3 or (istemci := istemci_al()) is None:
-                    ozet["hata"] = "eLogo oturumu yenilenemedi."
-                    ozet["indirilmedi"].extend(nolar)
-                    return ozet
-            except ElogoHatasi as e:
-                ozet["hata"] = str(e)
-                ozet["indirilmedi"].extend(nolar)
-                return ozet
-
-        toplam = sum(len(arama.get(no, [])) for no in nolar)
-        _olay(log_q, "progress", [0, toplam or len(nolar)])
-        ilerleme = 0
-        for no in nolar:
-            if stop_event.is_set():
-                ozet["durduruldu"] = True
-                break
-            eslesmeler = list(arama.get(no, []))
-            if not eslesmeler:
-                ozet["bulunamayan"].append(no)
-                _olay(log_q, "elogo_satir", {"no": no, "durum": "bulunamadi", "mesaj": "Fatura bulunamadı."})
-                ilerleme += 1
-                _olay(log_q, "progress", [ilerleme, toplam or len(nolar)])
+                self._istemci = None
+                self._yenileme += 1
+                if self._yenileme >= ART_ARDA_YENILEME_SINIRI:
+                    raise _IsDurdu("eLogo oturumu art arda düştü, iş durduruldu.") from None
+                self._log_q.put(("warn", "eLogo oturumu sona erdi, tekrar giriş yap."))
                 continue
-            if len(eslesmeler) > 1:
-                ozet["coklu"].append(no)
-            for sira, fatura in enumerate(sorted(eslesmeler, key=lambda x: str(x.get("InvoiceId", "")))):
-                if stop_event.is_set():
-                    ozet["durduruldu"] = True
-                    break
-                try:
-                    _indir_eslesme(no, sira, fatura, klasor, istemci, istemci_al,
-                                   ozet, log_q, stop_event)
-                    hata_sayaci = 0
-                except ElogoOturumHatasi:
-                    yenileme += 1
-                    _olay(log_q, "warn", "eLogo oturumu sona erdi, tekrar giriş yapın")
-                    if yenileme >= 3 or (istemci := istemci_al()) is None:
-                        ozet["hata"] = "eLogo oturumu yenilenemedi."
-                        ozet["indirilmedi"].extend(nolar[nolar.index(no):])
-                        return ozet
-                    # Aynı eşleşme yeniden denenir.
-                    try:
-                        _indir_eslesme(no, sira, fatura, klasor, istemci, istemci_al,
-                                       ozet, log_q, stop_event)
-                        yenileme = 0
-                        hata_sayaci = 0
-                    except ElogoOturumHatasi:
-                        yenileme += 1
-                        if yenileme >= 3:
-                            ozet["hata"] = "eLogo oturumu yenilenemedi."
-                            ozet["indirilmedi"].extend(nolar[nolar.index(no):])
-                            return ozet
-                        continue
-                except ElogoHatasi as e:
-                    hata_sayaci += 1
-                    ozet["hatali"].append(no)
-                    _olay(log_q, "warn", f"eLogo yanıtı beklenmedik, portal değişmiş olabilir: {e}")
-                    _olay(log_q, "elogo_satir", {"no": no, "durum": "hata", "mesaj": str(e)})
-                    if hata_sayaci >= 3:
-                        ozet["hata"] = "Art arda üç eLogo hatası oluştu."
-                        ozet["indirilmedi"].extend(nolar[nolar.index(no) + 1:])
-                        return ozet
-                except OSError:
-                    ozet["hata"] = "eLogo XML dosyası yazılamadı."
-                    ozet["indirilmedi"].extend(nolar[nolar.index(no):])
-                    return ozet
-                ilerleme += 1
-                _olay(log_q, "progress", [ilerleme, toplam or len(nolar)])
-    except Exception as e:
-        ozet["hata"] = type(e).__name__
-        ozet["indirilmedi"].extend([n for n in nolar if n not in ozet["indirilen"] and n not in ozet["atlanan"] and n not in ozet["bulunamayan"]])
-    finally:
-        if stop_event.is_set():
-            ozet["durduruldu"] = True
-            for no in nolar:
-                if no not in ozet["indirilen"] and no not in ozet["atlanan"] and no not in ozet["bulunamayan"] and no not in ozet["hatali"] and no not in ozet["indirilmedi"]:
-                    ozet["indirilmedi"].append(no)
-        _olay(log_q, "elogo_ozet", ozet)
-    return ozet
+            self._yenileme = 0
+            return sonuc
+
+    def _giris(self):
+        try:
+            istemci = self._al()
+        except ElogoHatasi as e:
+            raise _IsDurdu(str(e)) from None
+        if istemci is None:
+            raise _IsDurdu("eLogo girişi tamamlanmadı.")
+        return istemci
 
 
-def _indir_eslesme(no, sira, fatura, klasor, istemci, istemci_al, ozet, log_q, stop_event):
+def _satir(log_q, no, durum, mesaj):
+    log_q.put(("elogo_satir", {"no": no, "durum": durum, "mesaj": mesaj}))
+
+
+def _xml_vkn(yol):
+    try:
+        vkn = xml_den_veri_cek(str(yol), None).get("vkn")
+    except Exception:
+        return None
+    return vkn if isinstance(vkn, str) and re.fullmatch(r"\d{10,11}", vkn) else None
+
+
+def _eslesme_indir(no, sira, fatura, klasor, oturum, ozet, log_q):
+    """Tek eşleşmeyi işler; art arda hata sayacını sıfırlıyorsa True döner."""
     invoice_id = fatura.get("InvoiceId")
-    if not isinstance(invoice_id, str):
-        raise ElogoHatasi("eLogo InvoiceId değeri geçersiz.")
+    if not isinstance(invoice_id, str) or not invoice_id:
+        raise ElogoHatasi("Fatura kimliği geçersiz.")
+    # Portal değeri dosya yoluna girer: klasör dışına yazamasın.
     portal_no = fatura.get("InvoiceNumber")
     if not isinstance(portal_no, str) or not re.fullmatch(r"[A-Za-z0-9]+", portal_no):
         ozet["gecersiz"].append(no)
-        _olay(log_q, "elogo_satir", {"no": no, "durum": "gecersiz", "mesaj": "Portal fatura numarası güvenli değil."})
-        return
-    sender = fatura.get("Sender") or {}
-    vkn = sender.get("VKN_TCKN") if isinstance(sender, dict) else None
-    if not isinstance(vkn, str) or not re.fullmatch(r"\d{10,11}", vkn):
+        _satir(log_q, no, "gecersiz", "Portalın döndürdüğü numara dosya adı olamaz.")
+        return False
+
+    gonderen = fatura.get("Sender")
+    vkn = gonderen.get("VKN_TCKN") if isinstance(gonderen, dict) else None
+    if not (isinstance(vkn, str) and re.fullmatch(r"\d{10,11}", vkn)):
         vkn = None
-    ad = portal_no if sira == 0 else f"{portal_no}_{vkn or _guvenli_parca(invoice_id)}"
-    hedef = pathlib.Path(klasor) / f"{ad}.xml"
-    klasor_yol = pathlib.Path(klasor).resolve()
-    if hedef.resolve().parent != klasor_yol:
-        raise ElogoHatasi("eLogo dosya adı güvenli değil.")
-    if hedef.exists():
+
+    def atla(ad):
         ozet["atlanan"].append(no)
-        _olay(log_q, "elogo_satir", {"no": no, "durum": "atlandi", "mesaj": "Dosya zaten var."})
-        return
-    veri = istemci.xml_indir(invoice_id)
+        _satir(log_q, no, "atlandi", f"{ad} klasörde zaten var.")
+        return True
+
+    ad = portal_no if sira == 0 else f"{portal_no}_{vkn}" if vkn else None
+    if ad and (klasor / f"{ad}.xml").exists():
+        return atla(f"{ad}.xml")
+
+    veri = oturum.cagir(lambda istemci: istemci.xml_indir(invoice_id))
     if not veri:
         raise ElogoHatasi("eLogo boş XML döndürdü.")
-    gecici = hedef.with_name(hedef.name + ".tmp")
+
+    # Yarım dosya inmiş fatura gibi görünmesin; `.tmp` klasör taramasına da girmez.
+    gecici = klasor / f"{portal_no}_{sira}.xml.tmp"
     try:
         gecici.write_bytes(veri)
-        if vkn is None:
-            xml_vkn = xml_den_veri_cek(str(gecici), None).get("vkn")
-            if isinstance(xml_vkn, str) and re.fullmatch(r"\d{10,11}", xml_vkn):
-                vkn = xml_vkn
-        if sira > 0 and not f"_{vkn or _guvenli_parca(invoice_id)}" in hedef.name:
-            yeni = hedef.with_name(f"{portal_no}_{vkn or _guvenli_parca(invoice_id)}.xml")
-            if yeni.exists():
-                ozet["atlanan"].append(no)
-                return
-            hedef = yeni
-        os.replace(gecici, hedef)
-    except OSError:
-        try:
-            gecici.unlink()
-        except OSError:
-            pass
-        raise
+        if ad is None:
+            kimlik = re.sub(r"[^A-Za-z0-9-]", "", invoice_id)[:64] or "kimliksiz"
+            ad = f"{portal_no}_{_xml_vkn(gecici) or kimlik}"
+            if (klasor / f"{ad}.xml").exists():
+                return atla(f"{ad}.xml")
+        os.replace(gecici, klasor / f"{ad}.xml")
     finally:
-        if gecici.exists():
-            gecici.unlink()
+        gecici.unlink(missing_ok=True)
+
     ozet["indirilen"].append(no)
-    _olay(log_q, "elogo_satir", {"no": no, "durum": "indirildi", "mesaj": hedef.name})
+    _satir(log_q, no, "indirildi", f"{ad}.xml")
+    return True
+
+
+def _calistir(nolar, klasor, oturum, ozet, tamam, log_q, stop_event):
+    try:
+        bulunan = oturum.cagir(lambda istemci: istemci.fatura_bul(nolar))
+    except ElogoHatasi as e:
+        raise _IsDurdu(f"{_PORTAL_MESAJI}: {e}") from None
+
+    ardisik_hata = 0
+    for sayac, no in enumerate(nolar, 1):
+        eslesmeler = bulunan.get(no) or []
+        if not eslesmeler:
+            ozet["bulunamayan"].append(no)
+            _satir(log_q, no, "bulunamadi", "eLogo'da bulunamadı.")
+        elif len(eslesmeler) > 1:
+            ozet["coklu"].append(no)
+        # Sıra sabit olmalı: portal sırayı değiştirirse devam ederken ilk
+        # faturanın adı başkasına verilir, gerçek ilk fatura "var" sanılıp atlanırdı.
+        for sira, fatura in enumerate(sorted(eslesmeler, key=lambda f: str(f.get("InvoiceId")))):
+            if stop_event.is_set():
+                return
+            try:
+                if _eslesme_indir(no, sira, fatura, klasor, oturum, ozet, log_q):
+                    ardisik_hata = 0
+            except ElogoHatasi as e:
+                ardisik_hata += 1
+                ozet["hatali"].append(no)
+                log_q.put(("warn", f"{_PORTAL_MESAJI}: {e}"))
+                _satir(log_q, no, "hata", str(e))
+                if ardisik_hata >= ART_ARDA_HATA_SINIRI:
+                    tamam.add(no)
+                    raise _IsDurdu("Art arda 3 eLogo hatası oluştu, iş durduruldu.") from None
+            except OSError as e:
+                raise _IsDurdu(f"XML klasöre yazılamadı: {e}") from None
+        tamam.add(no)
+        log_q.put(("progress", [sayac, len(nolar)]))
+
+
+def indir(nolar, gecersiz, klasor, istemci_al, log_q, stop_event):
+    """Numaraları indirir ve özeti döndürür; son olay her koşulda ("elogo_ozet", ozet)."""
+    ozet = {"indirilen": [], "atlanan": [], "bulunamayan": [], "gecersiz": list(gecersiz),
+            "hatali": [], "coklu": [], "indirilmedi": [], "hata": None, "durduruldu": False}
+    tamam = set()
+    try:
+        for no in gecersiz:
+            _satir(log_q, no, "gecersiz", "16 karakterden uzun.")
+        if nolar:
+            log_q.put(("progress", [0, len(nolar)]))
+            _calistir(nolar, pathlib.Path(klasor), _Oturum(istemci_al, log_q),
+                      ozet, tamam, log_q, stop_event)
+    except _IsDurdu as e:
+        ozet["hata"] = str(e)
+    except Exception as e:
+        # Yalnız tip adı: istisna metni yanıt gövdesi ya da oturum verisi taşıyabilir.
+        ozet["hata"] = f"Beklenmedik hata: {type(e).__name__}"
+    ozet["durduruldu"] = stop_event.is_set()
+    if ozet["durduruldu"]:
+        ozet["hata"] = None     # Durdur'un yarıda kestiği giriş hata değil
+    ozet["indirilmedi"] = [no for no in nolar if no not in tamam]
+    log_q.put(("elogo_ozet", ozet))
+    return ozet

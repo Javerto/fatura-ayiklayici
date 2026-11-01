@@ -16,22 +16,33 @@ from api import Api
 
 
 def test_elogo_olay_sozlesmesi_ve_token_sizdirmaz(tmp_path):
+    """web/app.js `elogo_satir` ve `elogoBitti(o)` bu anahtarları okuyor."""
+    from elogo import ElogoIstemcisi
     from elogo_indir import indir
-    q = __import__("queue").Queue()
-    class Istemci:
-        def fatura_bul(self, nolar): return {"A": []}
-    indir(["A"], [], str(tmp_path), lambda: Istemci(), q, threading.Event())
+
+    def gonder(yontem, url, govde, basliklar):
+        return 200, json.dumps({"Items": [], "TotalCount": 0}).encode()
+
+    q = queue.Queue()
+    istemci = ElogoIstemcisi("sahte-token-123", "musteri", son_kullanma=9e12, gonder=gonder)
+    indir(["A"], ["B" * 17], str(tmp_path), lambda: istemci, q, threading.Event())
     olaylar = []
-    while not q.empty(): olaylar.append(q.get_nowait())
-    assert set(olaylar[-1][1]) == {"indirilen", "atlanan", "bulunamayan", "gecersiz", "hatali", "coklu", "indirilmedi", "hata", "durduruldu"}
-    assert all(set(veri) == {"no", "durum", "mesaj"} for tip, veri in olaylar if tip == "elogo_satir")
+    while not q.empty():
+        olaylar.append(q.get_nowait())
+    assert olaylar[-1][0] == "elogo_ozet"
+    assert set(olaylar[-1][1]) == {"indirilen", "atlanan", "bulunamayan", "gecersiz",
+                                   "hatali", "coklu", "indirilmedi", "hata", "durduruldu"}
+    satirlar = [d for t, d in olaylar if t == "elogo_satir"]
+    assert satirlar and all(set(d) == {"no", "durum", "mesaj"} for d in satirlar)
     assert "sahte-token-123" not in json.dumps(olaylar, ensure_ascii=False)
 
 
-def test_app_js_elogo_olaylarini_taniyor():
+def test_app_js_elogo_sozlesmesini_okuyor():
     js = pathlib.Path("web/app.js").read_text("utf-8")
-    assert 'case "elogo_satir"' in js
-    assert 'case "elogo_ozet"' in js
+    assert 'case "elogo_satir"' in js and 'case "elogo_ozet"' in js
+    for anahtar in ("indirilen", "atlanan", "bulunamayan", "gecersiz",
+                    "hatali", "coklu", "indirilmedi", "hata", "durduruldu"):
+        assert re.search(rf"\bo\.{anahtar}\b", js), anahtar
 
 
 def _worker_olaylari(tmp_path, monkeypatch):
