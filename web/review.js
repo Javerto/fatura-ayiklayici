@@ -19,9 +19,10 @@ const RV_TAM  = new Set(["tanim", "sirket_adi"]);       // tam satır kaplasın
 const RV_MONO = new Set(["fatura_no", "vkn"]);          // sabit genişlikli yazı
 
 function reviewAc(o) {
-  R.satirlar = o.satirlar;
+  // Önce şüpheliler. Yalnızca açılışta sıralanır: düzeltme sırasında yeniden
+  // sıralansa, uyarısı giden satır kullanıcının elinin altından kayardı.
+  R.satirlar = [...o.satirlar].sort((a, b) => !a.uyarilar.length - !b.uyarilar.length);
   R.alanlar = o.alanlar;
-  R.secili = 0;
   R.haric.clear(); R.hatirla.clear(); R.duzenlemeler = {};
   R.sadeceUyarili = false;
   $("rvSuzge").textContent = "⚠ Sadece uyarılı";   // durumla birlikte etiket de sıfırlanmalı
@@ -35,8 +36,7 @@ function reviewAc(o) {
   $("review").hidden = false;
   document.body.style.overflow = "hidden";
 
-  const ilkUyarili = R.satirlar.findIndex(s => s.uyarilar.length);
-  R.secili = ilkUyarili >= 0 ? ilkUyarili : 0;
+  R.secili = R.satirlar.length ? R.satirlar[0].i : 0;
   rvListeCiz();
   rvSatirSec(R.secili);
 }
@@ -97,6 +97,10 @@ function rvListeCiz() {
 
 // ═══ FORM ═══
 function rvSatirSec(i) {
+  // Odak bırakılmazsa aşağıdaki `innerHTML` odaklı alanı silerken `focusout`
+  // üretir; o anda R.secili yeni satır, formda ise hâlâ eski satırın metinleri
+  // olduğundan rvUygula eski satırın değerlerini YENİ satıra yazar.
+  if ($("rvForm").contains(document.activeElement)) document.activeElement.blur();
   R.secili = i;
   const s = R.satirlar.find(x => x.i === i);
   if (!s) return;
@@ -197,6 +201,9 @@ async function rvOnizlemeYukle(sigdir = false) {
 
   if (sigdir) {
     const img = pv.querySelector("img");
+    // Çözülmeden naturalWidth 0: hedef sonsuz çıkar, zoom %300'e kaçıp sayfa kesilir.
+    await img.decode().catch(() => {});
+    if (R.secili !== s.i || !img.naturalWidth) return;
     const sayfaGenislik = img.naturalWidth / R.zoom;      // 1× hâlindeki genişlik
     const hedef = (pv.clientWidth - 30) / sayfaGenislik;
     const yeni = Math.max(0.5, Math.min(3.0, hedef));
@@ -215,20 +222,53 @@ function rvUyariyaAtla(yon) {
   }
 }
 
+// ═══ KLAVYE ═══
+/** Görünen listede bir önceki/sonraki satıra geçer ve yazmaya hazır bırakır. */
+async function rvSatiraGec(yon) {
+  const gorunen = rvGorunen();
+  const hedef = gorunen[gorunen.findIndex(s => s.i === R.secili) + yon];
+  if (!hedef) return;
+  await rvUygula();
+  rvSatirSec(hedef.i);
+  document.querySelector(".rvrow.on")?.scrollIntoView({ block: "nearest" });
+  ($("rvForm").querySelector(".f.bad input") ||
+   $("rvForm").querySelector("input[data-alan]"))?.focus();
+}
+
+function rvKlavye(e) {
+  if ($("review").hidden || document.querySelector(".perde")) return;
+  if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+    e.preventDefault();
+    rvSatiraGec(e.key === "ArrowUp" ? -1 : 1);
+  } else if (e.altKey && e.key.toLowerCase() === "h") {
+    e.preventDefault();
+    $("rvHaric").click();
+  } else if (e.ctrlKey && e.key === "Enter" && !e.repeat) {
+    e.preventDefault();
+    rvOnayla();
+  }
+}
+
 // ═══ ONAY / İPTAL ═══
 async function rvOnayla() {
-  await rvUygula();
-  const kalan = R.satirlar.filter(
-    s => !R.haric.has(s.i) && s.uyarilar.length).length;
-  if (kalan && !await onayModal(
-        "Uyarılar var",
-        `${kalan} faturada hâlâ uyarı var. Yine de Excel'e yazılsın mı?`,
-        "Yine de yaz")) return;
-
+  // Kısayol butonu atlar: kilit, ilk `await`ten önce konmazsa ikinci basış
+  // araya girip ikinci bir onay kutusu açar.
+  if ($("rvOnayla").disabled) return;
   $("rvOnayla").disabled = true;
-  const c = await pywebview.api.review_onayla(
-    R.duzenlemeler, [...R.haric], [...R.hatirla]);
-  $("rvOnayla").disabled = false;
+  let c;
+  try {
+    await rvUygula();
+    const kalan = R.satirlar.filter(
+      s => !R.haric.has(s.i) && s.uyarilar.length).length;
+    if (kalan && !await onayModal(
+          "Uyarılar var",
+          `${kalan} faturada hâlâ uyarı var. Yine de Excel'e yazılsın mı?`,
+          "Yine de yaz")) return;
+    c = await pywebview.api.review_onayla(
+      R.duzenlemeler, [...R.haric], [...R.hatirla]);
+  } finally {
+    $("rvOnayla").disabled = false;
+  }
   if (c.hata) {                 // pencere açık kalır, düzenlemeler kaybolmaz
     await bilgiModal("Excel kaydedilemedi", c.hata);
     return;
@@ -298,5 +338,6 @@ function reviewKur() {
   $("rvSonraki").onclick = () => { R.sayfa++; rvOnizlemeYukle(); };
   $("rvDisAc").onclick = () => pywebview.api.dosya_ac(R.secili);
   $("rvOnayla").onclick = rvOnayla;
+  document.addEventListener("keydown", rvKlavye);
   $("rvIptal").onclick = rvIptal;
 }
