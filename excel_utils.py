@@ -35,6 +35,19 @@ def excel_guvenli(deger):
     return ILLEGAL_CHARACTERS_RE.sub("", deger)
 
 
+def veri_hucresi(ws, row, column, deger):
+    """Faturadan gelen değeri yazar; `=` ile başlayan metin formül olmaz.
+
+    openpyxl `=` ile başlayan her metni formül sayar. Fatura metni (ve
+    model çıktısı) dışarıdan gelir: `=HYPERLINK(...)` gibi bir değer
+    tıklanabilir bağlantıya dönüşürdü. Değer olduğu gibi metin kalır.
+    """
+    c = ws.cell(row=row, column=column, value=excel_guvenli(deger))
+    if c.data_type == "f":
+        c.data_type = "s"
+    return c
+
+
 def dosya_url(dosya_yolu: str) -> str:
     """Dosya yolunu geçerli file:// URL'e çevirir. UNC path'leri de destekler."""
     p = dosya_yolu.replace("\\", "/")
@@ -324,7 +337,7 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
 
         veri_map = {a.sutun: s.get(a.anahtar, _bos(a)) for a in sema.alanlar}
         for col, val in veri_map.items():
-            c = ws.cell(row=ri, column=col, value=excel_guvenli(val))
+            c = veri_hucresi(ws, ri, col, val)
             c.font, c.border = f10, kenar
             c.alignment = Alignment(vertical="center")
             if col in (sutun["vergiler_dahil_tutar"], sutun["kdv_haric_tutar"]) and isinstance(val, (int, float)):
@@ -502,10 +515,10 @@ def _ozet_sayfasi_yaz(wb, satirlar: list):
             pb_listesi = sorted(v["tutar"]) or [None]
             for i, pb in enumerate(pb_listesi):
                 if i == 0:
-                    ws.cell(row=r, column=1, value=ad).font = f10
+                    veri_hucresi(ws, r, 1, ad).font = f10
                     ws.cell(row=r, column=2, value=v["adet"]).font = f10
                 if pb is not None:
-                    ws.cell(row=r, column=3, value=pb).font = f10
+                    veri_hucresi(ws, r, 3, pb).font = f10
                     c = ws.cell(row=r, column=4, value=v["tutar"][pb])
                     c.font, c.number_format = f10, num_fmt
                 r += 1

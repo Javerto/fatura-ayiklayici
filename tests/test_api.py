@@ -113,3 +113,19 @@ def test_kalite_kaydet_yalnizca_desteklenen_degerleri_yazar(tmp_path):
     env = tmp_path / ".env"
     assert not env.exists() or "9.9" not in env.read_text("utf-8")
     assert api.kalite_kaydet("3.0") is True
+
+
+def test_cikti_adi_secilen_klasorun_disina_cikamaz(tmp_path, monkeypatch):
+    r"""JS bir güven sınırı: `..\x` klasörün dışına, `C:\x` başka bir sürücüye
+    yazardı; `<` gibi karakterler kaydetme anında çöküyordu."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.setattr("api.worker", lambda *a, **k: None)
+    api = Api(kok=tmp_path)
+    monkeypatch.setattr(api, "_pompa", lambda: None)
+
+    for ad in [r"..\x", "../x", r"C:\x", "a<b", "a:b", "x/y"]:
+        sonuc = api.basla({"klasor": str(tmp_path), "cikti": ad})
+        assert "hata" in sonuc, ad
+        assert not api._calisiyor
+    assert "ok" in api.basla({"klasor": str(tmp_path), "cikti": "Ocak 2024"})
+    assert api._cikti == str(tmp_path / "Ocak 2024.xlsx")

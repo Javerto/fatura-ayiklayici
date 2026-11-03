@@ -199,7 +199,12 @@ class Api:
             if sema_hatasi:
                 return self._bozuk_sema(sema_hatasi)
 
-            cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
+            # JS bir güven sınırı: `..\x` ya da `C:\x` seçilen klasörün dışına
+            # yazardı, Windows'ta geçersiz karakter ise kaydetme anında çöküyordu.
+            ad = (ayarlar.get("cikti") or "faturalar").strip()
+            if any(k in ad for k in '<>:"/\\|?*') or ad.strip(". ") == "":
+                return {"hata": "Çıktı adı geçersiz karakter içeriyor."}
+            cikti_adi = ad + ".xlsx"
             self._klasor = klasor
             self._cikti = os.path.join(klasor, cikti_adi)
             self._atlanmis = []
