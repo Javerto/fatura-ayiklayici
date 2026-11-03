@@ -268,11 +268,9 @@ def pdf_to_images(dosya_yolu: str, zoom: float = 1.5) -> list[bytes]:
         doc = fitz.open(dosya_yolu)
     except Exception:
         raise PDFHatasi("PDF açılamadı. Dosya bozuk veya şifreli olabilir.")
-    images = []
-    for page in doc:
-        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
-        images.append(pix.tobytes("jpeg"))
-    doc.close()
+    with doc:
+        images = [page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).tobytes("jpeg")
+                  for page in doc]
     if not images:
         raise PDFHatasi("PDF'den görsel oluşturulamadı. Sayfa içeriği boş olabilir.")
     return images
@@ -396,12 +394,8 @@ def xml_den_veri_cek(xml_yolu: str, pdf_yolu: str | None) -> dict:
 def pdf_text_ayikla(dosya_yolu: str) -> str:
     """PDF'den dijital metni ayıklar."""
     try:
-        doc = fitz.open(dosya_yolu)
-        text = ""
-        for page in doc:
-            text += page.get_text()
-        doc.close()
-        return text.strip()
+        with fitz.open(dosya_yolu) as doc:
+            return "".join(page.get_text() for page in doc).strip()
     except Exception:
         return ""
 

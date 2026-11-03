@@ -444,11 +444,15 @@ function numaraEkrani() {
   p.querySelector(".modal").classList.add("el-modal");
   const q = s => p.querySelector(s);
   const esc = e => { if (e.key === "Escape") kapat(); };
-  const kapat = () => { document.removeEventListener("keydown", esc); p.remove(); };
+  let sira = 0, aranacak = 0, zamanlayici;
+  // Bekleyen sayaç güncellemesi kapanmış modalın öğelerine erişmesin
+  const kapat = () => {
+    clearTimeout(zamanlayici); sira++;
+    document.removeEventListener("keydown", esc); p.remove();
+  };
   document.addEventListener("keydown", esc);
   p.addEventListener("click", e => { if (e.target === p) kapat(); });
 
-  let sira = 0, aranacak = 0, zamanlayici;
   const dugme = () => {
     q("#elKlasor").textContent = D.klasor || "Klasör seçilmedi";
     q("#elIndir").disabled = !aranacak || !D.klasor;
