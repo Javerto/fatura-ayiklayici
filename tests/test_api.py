@@ -88,3 +88,28 @@ def test_bozuk_semayla_kosu_baslamaz(tmp_path, monkeypatch):
     assert str(tmp_path / "alanlar.json") in sonuc["hata"]
     assert "silin" in sonuc["hata"] and "kaydedin" not in sonuc["hata"]
     assert not calisan and not api._calisiyor
+
+
+def test_gecersiz_kaliteyle_basla_kilitlenmez(tmp_path, monkeypatch):
+    """Kalite float'a çevrilirken `_calisiyor` çoktan True'ydu: geçersiz değer
+    ValueError fırlatıyor, bayrak True kalıyor ve uygulama yeniden açılana
+    kadar her denemede "Zaten bir işlem sürüyor" diyordu."""
+    monkeypatch.setenv("GEMINI_API_KEY", "test")
+    monkeypatch.setattr("api.worker", lambda *a, **k: None)
+    api = Api(kok=tmp_path)
+    monkeypatch.setattr(api, "_pompa", lambda: None)
+
+    sonuc = api.basla({"klasor": str(tmp_path), "cikti": "x", "kalite": "abc"})
+
+    assert "hata" in sonuc and not api._calisiyor
+    assert "hata" in api.basla("bozuk")
+    assert "ok" in api.basla({"klasor": str(tmp_path), "cikti": "x", "kalite": "2.0"})
+
+
+def test_kalite_kaydet_yalnizca_desteklenen_degerleri_yazar(tmp_path):
+    """.env'e yazılan bozuk değer her açılışta okunuyor."""
+    api = Api(kok=tmp_path)
+    assert api.kalite_kaydet("9.9") is False
+    env = tmp_path / ".env"
+    assert not env.exists() or "9.9" not in env.read_text("utf-8")
+    assert api.kalite_kaydet("3.0") is True

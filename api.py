@@ -53,6 +53,7 @@ ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
 # son 60 sn'de verir: daha geniş olmalı ki yenileme aynı istemciyi geri vermesin.
 ELOGO_OTURUM_PAYI = 120
 
+KALITELER = ("1.0", "1.5", "2.0", "3.0")   # web/index.html #kaliteSeg
 GECERLI_TEMALAR = ("mocha", "macchiato", "frappe", "nord", "latte", "kagit")
 
 VARSAYILAN_BOYUT = (1040, 760)
@@ -141,6 +142,8 @@ class Api:
         return self._ayar_yaz("TEMA", ad)
 
     def kalite_kaydet(self, deger: str) -> bool:
+        if str(deger) not in KALITELER:
+            return False
         return self._ayar_yaz("KALITE", str(deger))
 
     def api_key_kaydet(self, key: str) -> bool:
@@ -168,6 +171,13 @@ class Api:
 
     def basla(self, ayarlar: dict) -> dict:
         """İşlemi başlatır. Hata varsa {'hata': mesaj} döner."""
+        # Kalite durum değişmeden doğrulanır: kilidin içinde float() hata
+        # verirse _calisiyor True kalıp uygulamayı kilitliyordu.
+        if not isinstance(ayarlar, dict):
+            return {"hata": "Geçersiz ayarlar."}
+        kalite = str(ayarlar.get("kalite") or "1.5")
+        if kalite not in KALITELER:
+            return {"hata": "Geçersiz okuma kalitesi."}
         # Arayüz butonu kilitliyor ama JS bir güven sınırı: ikinci bir çağrı
         # `_log_q`'yu değiştirip ilk worker'ın tüm çıktısını (harcanan kotayla
         # birlikte) okunmayan bir kuyrukta bırakıyordu.
@@ -203,7 +213,7 @@ class Api:
             threading.Thread(
                 target=worker,
                 args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
-                kwargs={"zoom": float(ayarlar.get("kalite") or 1.5),
+                kwargs={"zoom": float(kalite),
                         "kurallar": kurallari_oku(self._duzeltme),
                         "retry_dosyalar": retry,
                         "sema": self._sema},
