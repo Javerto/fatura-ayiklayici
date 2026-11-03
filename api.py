@@ -46,6 +46,9 @@ else:
 ENV_DOSYASI      = _BASE / ".env"
 GECMIS_DOSYASI   = _BASE / "gecmis.json"
 DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
+# Windows'un aygıt adları: uzantıyla bile (CON.xlsx) dosya olarak yazılamaz.
+AYRILMIS_ADLAR = {"CON", "PRN", "AUX", "NUL",
+                  *(f"{a}{i}" for a in ("COM", "LPT") for i in range(1, 10))}
 
 ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
 
@@ -202,10 +205,11 @@ class Api:
             # JS bir güven sınırı: `..\x` ya da `C:\x` seçilen klasörün dışına
             # yazardı; geçersiz karakter / CON gibi ayrılmış ad ise ancak tüm
             # kota harcandıktan sonra, kaydetme anında patlıyordu.
-            # isreserved ':' karakterini kaçırıyor, ayrı kontrol o yüzden.
+            # os.path.isreserved 3.13+; README 3.11'i destekliyor, o yüzden elle.
             ad = (ayarlar.get("cikti") or "faturalar").strip()
-            if (any(k in ad for k in '<>:"/\\|?*') or ad.strip(". ") == ""
-                    or os.path.isreserved(ad + ".xlsx")):
+            if (any(k in '<>:"/\\|?*' or ord(k) < 32 for k in ad)
+                    or ad.strip(". ") == ""
+                    or ad.split(".")[0].rstrip().upper() in AYRILMIS_ADLAR):
                 return {"hata": "Çıktı adı geçersiz: farklı bir dosya adı yazın."}
             cikti_adi = ad + ".xlsx"
             self._klasor = klasor
