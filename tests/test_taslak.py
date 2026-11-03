@@ -229,3 +229,34 @@ def test_taslak_devam_beklenmeyen_hatada_yedekler(kok, tmp_path, monkeypatch):
     assert api._review is None and api._taslak_bekleyen is None   # basla kilitli kalmasın
     assert not (kok / "inceleme_taslagi.pkl").exists()
     assert len(list(kok.glob("inceleme_taslagi*.bozuk"))) == 1
+
+
+class _Zararli:
+    """Açılışta kod çalıştırmaya çalışan taslak: işaret dosyası yaratır."""
+    def __init__(self, yol):
+        self.yol = str(yol)
+
+    def __reduce__(self):
+        return (exec, (f"open(r'{self.yol}', 'w').close()",))
+
+
+def test_taslak_izin_verilmeyen_turu_yuklemez(kok, tmp_path):
+    """pickle, yüklerken izin listesinin dışındaki hiçbir çağrılabiliri çalıştırmamalı."""
+    import pickle
+    isaret = tmp_path / "calisti"
+    (kok / "inceleme_taslagi.pkl").write_bytes(pickle.dumps({"surum": 1, "x": _Zararli(isaret)}))
+    taslak = _api(kok).baslangic_durumu()["taslak"]
+    assert "hata" in taslak and not isaret.exists()
+    assert len(list(kok.glob("inceleme_taslagi*.bozuk"))) == 1
+
+
+def test_inceleme_acikken_sayfa_yenilenirse_basla_kilitlenmez(kok, tmp_path, monkeypatch):
+    """F5 açılışı yeniden çalıştırır: açık incelemenin kendi taslağı 'bekleyen'
+    sayılırsa onaydan sonra `basla` uygulama yeniden açılana kadar reddederdi."""
+    api = _api(kok)
+    _review_gelsin(api, tmp_path, [_satir("GIB2024000000101")])
+    assert api.baslangic_durumu()["taslak"] is None
+    api.review_iptal()
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr("api.worker", lambda *a, **k: None)
+    assert api.basla({"klasor": str(tmp_path), "cikti": "x"}) == {"ok": True}

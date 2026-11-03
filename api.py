@@ -9,6 +9,7 @@ Eski `gui.py`'nin tkinter'dan bağımsız tüm sorumlulukları buraya taşındı
 """
 
 import base64
+import io
 import json
 import os
 import pathlib
@@ -67,6 +68,17 @@ def _xml_mi(satir: dict) -> bool:
     """Satırın kaynağı yalnızca XML mi? (PDF'i olan XML'de dosya_yolu PDF'tir.)"""
     yol = str(satir.get("dosya_yolu") or "")
     return yol.lower().endswith(".xml") and os.path.exists(yol)
+
+
+class _TaslakOkuyucu(pickle.Unpickler):
+    """Yalnız taslağın içerdiği türleri yükler; başka hiçbir çağrılabilir çalışmaz."""
+    _IZINLI = {("datetime", "datetime"), ("datetime", "date"),
+               ("sema", "Sema"), ("sema", "Alan")}
+
+    def find_class(self, modul, ad):
+        if (modul, ad) not in self._IZINLI:
+            raise pickle.UnpicklingError(f"izin verilmeyen tür: {modul}.{ad}")
+        return super().find_class(modul, ad)
 
 
 def _damga(yol: str):
@@ -711,10 +723,12 @@ class Api:
         elle kurtarılabilir ve her açılışta aynı soru sorulmaz.
         """
         self._taslak_bekleyen = None
+        if self._review is not None:   # sayfa yenilendi: açık incelemenin kendi taslağı
+            return None
         if not self._taslak.exists():
             return None
         try:
-            veri = pickle.loads(self._taslak.read_bytes())
+            veri = _TaslakOkuyucu(io.BytesIO(self._taslak.read_bytes())).load()
             review = veri["review"]
             if (veri["surum"] != 1 or not isinstance(veri["sema"], sema.Sema)
                     or not isinstance(review["mevcut"], list)
@@ -748,9 +762,9 @@ class Api:
         """Onay bekleyen incelemeyi atomik olarak diske yazar; yazılamazsa False.
 
         pickle, çünkü satırlarda datetime/float, şemada `Sema` değer nesnesi
-        var; JSON'da her birine ayrı çevirici gerekirdi. Dosyayı yalnız bu
-        uygulama, kullanıcının kendi ayar klasörüne yazıyor; oraya yazabilen
-        biri `.env`'i de değiştirebilir, pickle yeni bir kapı açmıyor.
+        var; JSON'da her birine ayrı çevirici gerekirdi. Dosya kullanıcının
+        kendi ayar klasöründe; yine de okuma `_TaslakOkuyucu` ile yalnız
+        taslağın türlerini kabul eder, keyfi kod çalıştırılamaz.
         """
         with self._taslak_kilit:
             if self._review is None:     # onay/iptal geç kalan bir yazmayı geçti
@@ -771,7 +785,7 @@ class Api:
     def _review_bitir(self):
         """İnceleme onaylandı ya da iptal edildi: bellekten ve diskten kalkar."""
         with self._taslak_kilit:
-            self._review = None
+            self._review = self._taslak_bekleyen = None
             self._duzenlemeler = {}
             self._haric = set()
             try:

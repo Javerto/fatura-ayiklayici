@@ -8,6 +8,7 @@ const R = {
   sadeceUyarili: false, zoom: 1.0, sayfa: 0, toplamSayfa: 0,
   sigdir: false, yukleNo: 0,   // açılışta panele sığdır; yalnız son önizleme isteği geçerli
   vurgu: null, vurguNo: 0,     // {sayfa, kutular}; yalnız son arama geçerli
+  haricSira: Promise.resolve(),   // review_haric çağrıları sırayla gitsin
 };
 
 // Alan gruplaması yalnızca görsel; anahtar/etiket Python'dan gelir.
@@ -477,7 +478,10 @@ function reviewKur() {
   });
   $("rvHaric").onchange = e => {
     e.target.checked ? R.haric.add(R.secili) : R.haric.delete(R.secili);
-    pywebview.api.review_haric(R.secili, e.target.checked);   // taslağa
+    // Sırayla: pywebview her çağrıyı ayrı thread'de işler; çift tıklamada
+    // eski istek sonra yazıp taslağa ters durumu bırakabilirdi.
+    const i = R.secili, durum = e.target.checked;
+    R.haricSira = R.haricSira.then(() => pywebview.api.review_haric(i, durum));
     rvListeCiz();
   };
   $("rvSuzge").onclick = () => {
