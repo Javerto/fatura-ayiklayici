@@ -93,3 +93,23 @@ def test_esittirle_baslayan_metin_formul_olarak_yazilmaz(tmp_path):
     assert all(c.data_type == "s" for c in hucreler)
     satirlar, _ = mevcut_verileri_oku(yol)
     assert satirlar[0]["sirket_adi"] == zararli    # değer bozulmadan döner
+
+
+def test_esittirle_baslayan_alan_etiketi_formul_olmaz(tmp_path):
+    """Etiket başlık satırına ve gizli `_Sema` sayfasına yazılır. Formül
+    olarak saklanırsa `data_only` okuma onu None görür ve arşiv şeması
+    bir sonraki okumada bozulur."""
+    import sema as _sema
+    etiket = "=Firma"
+    s = _sema.Sema([a._replace(baslik=etiket) if a.anahtar == "sirket_adi" else a
+                    for a in _sema.VARSAYILAN.alanlar])
+    yol = str(tmp_path / "faturalar.xlsx")
+    excel_olustur([_satir()], yol, s)
+
+    wb = load_workbook(yol)
+    hucreler = [c for ws in wb for row in ws.iter_rows() for c in row
+                if c.value == etiket]
+    assert len(hucreler) == 2                      # başlık + _Sema
+    assert all(c.data_type == "s" for c in hucreler)
+    satirlar, _ = mevcut_verileri_oku(yol)
+    assert satirlar[0]["sirket_adi"] == "ACME A.Ş."

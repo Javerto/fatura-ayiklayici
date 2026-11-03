@@ -425,8 +425,9 @@ def _sema_sayfasi_yaz(wb, sema):
     # tip: arşive özgü alan geri yazılırken biçimini korusun (`arsiv_semasi`).
     ws = wb.create_sheet(SEMA_SAYFASI)
     ws.append(["anahtar", "sutun", "baslik", "tip"])
-    for a in sorted(sema.tum_alanlar, key=lambda a: a.sutun):
-        ws.append([a.anahtar, a.sutun, a.baslik, a.tip])
+    for r, a in enumerate(sorted(sema.tum_alanlar, key=lambda a: a.sutun), 2):
+        for col, deger in enumerate((a.anahtar, a.sutun, a.baslik, a.tip), 1):
+            veri_hucresi(ws, r, col, deger)
     ws.sheet_state = "hidden"
 
 
