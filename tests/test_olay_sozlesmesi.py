@@ -10,7 +10,6 @@ import re
 import json
 import threading
 
-import pytest
 
 from api import Api
 

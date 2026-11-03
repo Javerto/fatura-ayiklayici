@@ -59,7 +59,7 @@ def test_haric_tutulan_satir_yazilmaz(api, tmp_path):
 
 def test_tum_yeniler_haric_ise_excele_dokunulmaz(api, tmp_path):
     """Dosya hiç yaratılmamalı; mevcut bir dosya varsa da bozulmamalı."""
-    cikti = _review_kur(api, tmp_path, [_satir("GIB2024000000101")])
+    _review_kur(api, tmp_path, [_satir("GIB2024000000101")])
     sonuc = api.review_onayla({}, [0], [])
     assert sonuc["dokunulmadi"] is True
     assert not (tmp_path / "faturalar.xlsx").exists()

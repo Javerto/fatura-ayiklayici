@@ -4,7 +4,7 @@ PDF ve XML faturalardan veri çıkarma modülü.
 
 import fitz
 import xml.etree.ElementTree as ET
-import base64, json, os, re, pathlib
+import base64, json, re, pathlib
 from datetime import datetime as _dt
 from lxml import etree as _lxml
 

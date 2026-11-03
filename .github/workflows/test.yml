@@ -19,4 +19,6 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: pip install -r requirements.txt
+      - run: pip install ruff
+      - run: ruff check --select F .
       - run: python -m pytest -q
