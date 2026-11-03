@@ -47,10 +47,10 @@ def test_sablon_olmayan_ekler_atlanir(tmp_path):
     (),
     (_ek(b"%PDF-1.4 ikili", "ek.pdf"),),
     (_ek("<xsl:stylesheet bozuk"),),
-    (f"""<cac:AdditionalDocumentReference><cac:Attachment>
+    ("""<cac:AdditionalDocumentReference><cac:Attachment>
         <cbc:EmbeddedDocumentBinaryObject>@@@@</cbc:EmbeddedDocumentBinaryObject>
         </cac:Attachment></cac:AdditionalDocumentReference>""",),
-    (f"""<cac:AdditionalDocumentReference><cac:Attachment>
+    ("""<cac:AdditionalDocumentReference><cac:Attachment>
         <cbc:EmbeddedDocumentBinaryObject/></cac:Attachment></cac:AdditionalDocumentReference>""",),
     (_ek(f"""<xsl:stylesheet version="1.0" {XSL}><xsl:template match="/">
         <xsl:message terminate="yes">dur</xsl:message></xsl:template></xsl:stylesheet>"""),),
