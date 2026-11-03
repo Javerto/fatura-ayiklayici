@@ -317,7 +317,7 @@ def excel_olustur(satirlar: list, cikti: str, sema=None):
     toplam_fill = PatternFill("solid", start_color="D9E1F2")
 
     for a in sutun_bilgisi:
-        c = ws.cell(row=1, column=a.sutun, value=a.baslik)
+        c = veri_hucresi(ws, 1, a.sutun, a.baslik)
         c.font, c.fill, c.alignment, c.border = baslik_font, baslik_fill, orta, kenar
     ws.row_dimensions[1].height = 30
 
