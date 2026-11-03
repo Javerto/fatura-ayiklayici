@@ -776,9 +776,16 @@ class Api:
                     "tarih": time.strftime("%d.%m.%Y %H:%M")}
             gecici = self._taslak.with_suffix(".tmp")
             try:
-                gecici.write_bytes(pickle.dumps(veri))
+                with open(gecici, "wb") as f:
+                    f.write(pickle.dumps(veri))
+                    f.flush()
+                    os.fsync(f.fileno())    # elektrik kesilirse eski taslak boş dosyayla değişmesin
                 os.replace(gecici, self._taslak)
             except Exception:       # taslak bir korumadır; hatası incelemeyi bozmamalı
+                try:
+                    gecici.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 return False
         return True
 
