@@ -200,10 +200,13 @@ class Api:
                 return self._bozuk_sema(sema_hatasi)
 
             # JS bir güven sınırı: `..\x` ya da `C:\x` seçilen klasörün dışına
-            # yazardı, Windows'ta geçersiz karakter ise kaydetme anında çöküyordu.
+            # yazardı; geçersiz karakter / CON gibi ayrılmış ad ise ancak tüm
+            # kota harcandıktan sonra, kaydetme anında patlıyordu.
+            # isreserved ':' karakterini kaçırıyor, ayrı kontrol o yüzden.
             ad = (ayarlar.get("cikti") or "faturalar").strip()
-            if any(k in ad for k in '<>:"/\\|?*') or ad.strip(". ") == "":
-                return {"hata": "Çıktı adı geçersiz karakter içeriyor."}
+            if (any(k in ad for k in '<>:"/\\|?*') or ad.strip(". ") == ""
+                    or os.path.isreserved(ad + ".xlsx")):
+                return {"hata": "Çıktı adı geçersiz: farklı bir dosya adı yazın."}
             cikti_adi = ad + ".xlsx"
             self._klasor = klasor
             self._cikti = os.path.join(klasor, cikti_adi)
