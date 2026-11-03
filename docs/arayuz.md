@@ -2,16 +2,18 @@
 
 CLAUDE.md'den taşındı. `web/` altında çalışırken geçerli kurallar.
 
-The UI is HTML/CSS/JS under `web/`. There is **one window**; the review screen is a hidden
-`<div class="rv">` that replaces the main screen when needed.
+The UI is HTML/CSS/JS under `web/`. The main and review screens share **one window**; the review screen is a hidden
+`<div class="rv">` that replaces the main screen when needed. eLogo login (`Api._elogo_giris`)
+opens a separate, auxiliary WebView window.
 
 ## Themes
 Six themes, each a single variable block in `tema.css`: **mocha** (default), **macchiato**,
-**frappe**, **nord** (dark) and **latte**, **kagit** (light). Adding a theme = copy a block and
-change the colours; no other file changes. `tema.js` builds the picker from its own `TEMALAR`
-list, and the choice is persisted via `api.tema_kaydet` → `.env`.
+**frappe**, **nord** (dark) and **latte**, **kagit** (light). Adding a theme = copy a block in `tema.css`,
+change the colours, and add an entry to `TEMALAR` in `tema.js` (the picker is built from that
+list; without it the theme never appears), and the choice is persisted via `api.tema_kaydet` → `.env`.
 
-**Never hard‑code a colour.** Always use the variables: `--bg --panel --card --raised --line
+**Application styling never hard‑codes a colour** (the only exception is the preview swatches in
+`tema.js:TEMALAR`; `tests/test_kurallar.py` checks hex literals). Always use the variables: `--bg --panel --card --raised --line
 --line-soft --tx --sub --dim --accent --accent-2 --on-accent --ok --warn --err` plus the
 `*-bg` tints, `--focus` and `--shadow`. A literal hex will break five of the six themes.
 `--on-accent` exists because text on the accent colour must be dark in dark themes and white

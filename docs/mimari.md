@@ -78,7 +78,7 @@ CLAUDE.md'den taşındı; modül bazında başvuru. Veri güvenliği kuralları 
 - `InternetHatasi` – Connection/rate‑limit issues; skips the current file.
 - `PDFHatasi` / `XMLHatasi` – Corrupted or unreadable file; skips the file.
 - `ModelHatasi` – Invalid/unparseable JSON response from the AI model; skips the file.
-- `ExcelHatasi` – Permission error when saving Excel; warns but continues.
+- `ExcelHatasi` – Excel read or write failure. Reading an existing workbook fails → `worker` logs it as critical and stops (treating it as empty would overwrite the archive). Saving on approval fails (e.g. file locked) → the error goes back to the UI and the review screen stays open.
 
 ## Retry Logic
 - Network/timeout/429/500/503 errors trigger a retry with backoff (15/30/45/60/75 s, up to `MAX_DENEME` attempts) **inside `gemini.ModelIstemcisi`**; callers see either a result or a classified exception. If the reply carries its own `retry in Ns`, that wins over the ladder.

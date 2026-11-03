@@ -6,7 +6,7 @@ Her bulguda kuralın adını ve diff'teki satırı göster.
 
 ## Python
 
-- **Tek kapı.** Model çağrısı yalnızca `gemini.py`'den, eLogo API'si yalnızca `elogo.py`'den geçer. Başka bir modülde `google.genai` ya da eLogo URL'si görürsen bulgu.
+- **Tek kapı.** Model çağrısı yalnızca `gemini.py`'den, eLogo API'si yalnızca `elogo.py`'den geçer. Başka bir modülde `google.genai` ya da eLogo API isteği görürsen bulgu. `api.py`'deki `ELOGO_PORTAL` yalnızca tarayıcı giriş penceresini açar; istisnadır.
 - **JS güven sınırı.** `Api`'nin her public metodu, JS'ten gelen argümanı Python tarafında doğrular (indeks aralığı, çalışma kilidi). Arayüzde buton kapatmak yetmez.
 - **`Api` iç durumu `_` önekli.** Yeni public nitelik, pywebview'in proxy taramasına girer.
 - **Veri kaybına karşı hata.** Okunamayan dosya hata fırlatır, boş sonuç döndürmez. Excel/JSON yazımı `.tmp` + `os.replace` ile olur. `excel_olustur` gibi yazma yolları her `OSError`'ı `ExcelHatasi`'na sarar.
