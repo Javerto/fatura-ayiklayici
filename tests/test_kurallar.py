@@ -41,7 +41,10 @@ def test_fatura_sayfasi_wb_active_ile_okunmaz():
         satirlar = p.read_text("utf-8").splitlines()
         for i, s in enumerate(satirlar):
             kod = s.split("#", 1)[0]
-            if re.search(r"\.active\b", kod) and "Workbook()" not in satirlar[i - 1]:
+            # İstisna yalnızca bir önceki satırda Workbook() ile yaratılan değişken.
+            yeni = re.match(r"\s*(\w+)\s*=\s*Workbook\(\)", satirlar[i - 1])
+            if re.search(r"\.active\b", kod) and not (
+                    yeni and re.search(rf"\b{yeni[1]}\.active\b", kod)):
                 hatali.append(f"{p.name}:{i + 1}: {s.strip()}")
     assert hatali == []
 
