@@ -25,7 +25,8 @@ function reviewAc(o) {
   // sıralansa, uyarısı giden satır kullanıcının elinin altından kayardı.
   R.satirlar = [...o.satirlar].sort((a, b) => !a.uyarilar.length - !b.uyarilar.length);
   R.alanlar = o.alanlar;
-  R.haric.clear(); R.hatirla.clear(); R.duzenlemeler = {};
+  // Taslaktan dönülünce önceki düzeltmeler gelir; onayda yeniden gönderilmeli.
+  R.haric.clear(); R.hatirla.clear(); R.duzenlemeler = { ...(o.duzenlemeler || {}) };
   R.sadeceUyarili = false;
   $("rvSuzge").textContent = "⚠ Sadece uyarılı";   // durumla birlikte etiket de sıfırlanmalı
   R.zoom = 1.0;

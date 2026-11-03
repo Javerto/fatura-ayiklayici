@@ -105,7 +105,7 @@ def test_review_olayinin_anahtarlari(tmp_path):
         "yeni": [{"fatura_no": "GIB2024000000101", "dosya_yolu": r"C:\x\a.pdf"}],
     })
     assert set(olay) == {"t", "satirlar", "alanlar", "mevcut_sayi",
-                         "kesildi", "atlanan", "sema_farki"}
+                         "kesildi", "atlanan", "sema_farki", "duzenlemeler"}
     assert set(olay["satirlar"][0]) == {"i", "form", "uyarilar", "dosya",
                                         "pdf", "xml", "kaynak"}
     assert olay["sema_farki"] is None       # yükte yoksa uyarı yok
