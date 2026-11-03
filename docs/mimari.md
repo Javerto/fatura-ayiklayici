@@ -44,6 +44,7 @@ CLAUDE.md'den taşındı; modül bazında başvuru. Veri güvenliği kuralları 
 - **`gecmis.json`** – Log of previous runs (folder, output file name, processed count, duration). Also stored in AppData when frozen.
 - **`duzeltmeler.json`** – VKN bazlı öğrenen düzeltme kuralları. Frozen modda `%APPDATA%\FaturaAyiklayici`, değilse proje klasöründe.
 - **`alanlar.json`** – Şema (bkz. `sema.py`, `CONTEXT.md`). İlk açılışta tohumdan yazılır; aynı konum kuralı. Gitignore'da.
+- **`inceleme_taslagi.pkl`** – Onay bekleyen inceleme (review yükü, koşunun şeması, `satir_dogrula` ile gelen form düzeltmeleri, `review_haric` ile hariç tutulanlar ("hatırla" kutusu kapsam dışı), Excel'in o anki mtime+boyut damgası). Review gelince ve her alan düzeltmesinde atomik yazılır; onay ve iptalde silinir, Excel yazılamazsa kalır. pickle bilinçli: satırlarda `datetime`/`float`, şemada `Sema` var; okuma `_TaslakOkuyucu` ile yalnız `datetime`/`sema.Sema`/`sema.Alan` türlerini kabul eder (keyfi kod çalışmaz). Açılışta `baslangic_durumu.taslak` → `onayModal`, karar verilene kadar sorulur; bekleyen taslak varken `basla` reddeder (yeni review onu ezerdi); bozuksa `inceleme_taslagi-<zaman>.bozuk` adıyla bırakılır. Excel'in damgası değişmişse `taslak_devam` mevcut satırları worker gibi yeniden okur (eski `mevcut` ile yazmak arada onaylanan faturaları silerdi). Kapanış onayı yok: taslak zaten korunuyor. Aynı konum kuralı.
 - **`faturalar.xlsx`** – Example output file (can be deleted).
 - **eLogo oturumu** – Token diske yazılmaz; `Api._elogo_oturum` aynı açılışta yeniden kullanır, iş hatayla biterse unutur. Kalıcı WebView2 profili denendi, işe yaramadı: portalın giriş çerezi oturumluk, uygulama kapanınca siliniyor ve giriş ekranında "beni hatırla" yok. Yeniden açılışta giriş istenmesi bu yüzden beklenen davranış.
 
@@ -63,7 +64,7 @@ CLAUDE.md'den taşındı; modül bazında başvuru. Veri güvenliği kuralları 
 5. XML files are parsed with `xml.etree.ElementTree` using UBL namespaces.
 6. Extracted data is validated (`veri_dogrula`); warnings are collected per row.
 7. When processing finishes the worker emits `("review", payload)`. `api` keeps the typed rows in memory and sends the UI only a **text projection** (`satir_form_degerleri`) plus warnings and the field list, so `datetime`/`float` never round‑trip through JSON. The review screen shows, the user edits/excludes rows; each edit calls back `satir_dogrula` for fresh warnings.
-8. On approval `review_onayla` converts the text back with `form_satira_uygula`, learns any "remember for this company" rules, and writes Excel. **Excel is written only after approval.** On cancel nothing is written. If the write fails (file locked) the screen stays open so edits aren't lost.
+8. On approval `review_onayla` converts the text back with `form_satira_uygula`, learns any "remember for this company" rules, and writes Excel. **Excel is written only after approval.** On cancel nothing is written. Until then the review lives on disk as a draft (`inceleme_taslagi.pkl`, see below) so a closed window or crash does not lose it. If the write fails (file locked) the screen stays open so edits aren't lost.
 9. Progress and log events reach the UI through `log_q` → `_pompa` → `window.olaylar([...])`.
 
 ## Invoice‑Number Correction

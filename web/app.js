@@ -549,7 +549,40 @@ async function acilis() {
   reviewKur();
   editorKur();
   if (d.klasor) klasorGoster(d.klasor);       // son kullanılan klasör
+  if (d.taslak) await taslakSor(d.taslak);
   if (!d.api_key_var) setTimeout(apiKeyModal, 400);
+}
+
+/* Yarım kalan inceleme. Karar verilene kadar sorulur: Escape ya da dışarı
+   tıklama da "Vazgeç" sayıldığından tek soruda yüzlerce faturanın çıkarımı
+   yanlışlıkla silinebilirdi; taslağı tutup yeni koşu başlatmak da onu ezerdi
+   (`basla` bu yüzden bekleyen taslakta reddeder). */
+async function taslakSor(t) {
+  if (t.hata) return bilgiModal("Yarım kalan inceleme okunamadı", t.hata);
+  for (;;) {
+    if (await onayModal("Yarım kalan inceleme",
+          `${t.tarih} tarihinde ${t.sayi} faturalık bir inceleme onaylanmadan kaldı (${t.cikti}). Devam edilsin mi?`,
+          "Devam et")) {
+      const c = await pywebview.api.taslak_devam();
+      if (c.hata) {               // tekrar: Excel okunamadı, düzeltilip yeniden denenebilir
+        await bilgiModal("İnceleme açılamadı", c.hata);
+        if (c.tekrar) continue;
+        return;
+      }
+      if (c.excel_degisti)
+        await bilgiModal("Excel değişmiş",
+          `${t.cikti} bu inceleme yarım kaldıktan sonra değişmiş. Mevcut faturalar yeniden okundu; ` +
+          "aynı fatura iki kez görünürse mükerrer uyarısına bakın.");
+      D.atlanan = c.atlanan;
+      return reviewAc(c);
+    }
+    if (await onayModal("Taslak silinsin mi?",
+          "Çıkarılan veriler ve düzeltmeler silinecek, faturalar yeniden işlenmek zorunda kalacak.",
+          "Evet, sil", true)) {
+      const c = await pywebview.api.taslak_sil();
+      return c.hata && bilgiModal("Taslak silinemedi", c.hata);
+    }
+  }
 }
 
 // pywebviewready, app.js dinleyiciyi kurmadan önce tetiklenmiş olabilir;
