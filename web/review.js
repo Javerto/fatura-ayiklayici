@@ -25,8 +25,9 @@ function reviewAc(o) {
   // sıralansa, uyarısı giden satır kullanıcının elinin altından kayardı.
   R.satirlar = [...o.satirlar].sort((a, b) => !a.uyarilar.length - !b.uyarilar.length);
   R.alanlar = o.alanlar;
-  // Taslaktan dönülünce önceki düzeltmeler gelir; onayda yeniden gönderilmeli.
-  R.haric.clear(); R.hatirla.clear(); R.duzenlemeler = { ...(o.duzenlemeler || {}) };
+  // Taslaktan dönülünce önceki düzeltmeler ve hariçler gelir; onayda yeniden gönderilmeli.
+  R.haric = new Set(o.haric || []); R.hatirla.clear();
+  R.duzenlemeler = { ...(o.duzenlemeler || {}) };
   R.sadeceUyarili = false;
   $("rvSuzge").textContent = "⚠ Sadece uyarılı";   // durumla birlikte etiket de sıfırlanmalı
   R.zoom = 1.0;
@@ -476,6 +477,7 @@ function reviewKur() {
   });
   $("rvHaric").onchange = e => {
     e.target.checked ? R.haric.add(R.secili) : R.haric.delete(R.secili);
+    pywebview.api.review_haric(R.secili, e.target.checked);   // taslağa
     rvListeCiz();
   };
   $("rvSuzge").onclick = () => {

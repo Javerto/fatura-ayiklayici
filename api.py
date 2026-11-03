@@ -119,6 +119,7 @@ class Api:
         self._baslangic = 0.0
         self._review = None            # onay bekleyen worker çıktısı
         self._duzenlemeler = {}        # {i: form} — taslağa giden düzeltmeler
+        self._haric = set()            # hariç tutulan satırlar — taslak için
         self._excel_damga = None       # review geldiğinde çıktının (mtime, boyut)
         self._taslak_bekleyen = None   # açılışta okunan, henüz açılmamış taslak
         self._taslak_kilit = threading.Lock()   # taslak yazma/silme
@@ -203,6 +204,10 @@ class Api:
         with self._baslatma_kilidi:
             if self._calisiyor or self._deneniyor:
                 return {"hata": "Zaten bir işlem sürüyor."}
+            # Yeni koşunun review'ı taslağın üstüne yazılır; karar verilmemiş
+            # eski inceleme (harcanan kota) sessizce giderdi.
+            if self._taslak_bekleyen is not None:
+                return {"hata": "Önce yarım kalan incelemeye devam edin ya da taslağı silin."}
             api_key = os.environ.get("GEMINI_API_KEY", "").strip()
             if not api_key:
                 return {"hata": "api_key"}
@@ -576,6 +581,14 @@ class Api:
         return veri_dogrula(form_satira_uygula(satir, form, self._sema),
                             self._baska_nolar(haric_i=int(i)), self._sema)
 
+    def review_haric(self, i: int, haric: bool) -> bool:
+        """Hariç tutma kutusu — yalnız taslak için; onay listeyi ayrıca alır."""
+        if self._satir(i) is None or not isinstance(haric, bool):
+            return False
+        (self._haric.add if haric else self._haric.discard)(int(i))
+        self._taslak_yaz()
+        return True
+
     def review_onayla(self, duzenlemeler: dict, haric: list,
                       hatirla: list) -> dict:
         """Düzenlemeleri uygular, kuralları öğrenir ve Excel'i yazar.
@@ -657,18 +670,27 @@ class Api:
                     review["sema_farki"] = sema_farki(cikti, veri["sema"])
                 except ExcelHatasi as e:
                     return {"hata": f"{e}\nTaslak silinmedi; Excel'i düzeltip "
-                                    "uygulamayı yeniden açın."}
+                                    "yeniden deneyin.", "tekrar": True}
             self._taslak_bekleyen = None
             self._sema = veri["sema"]
             self._klasor = veri["klasor"]
             self._cikti = cikti
             self._baslangic = time.time()
             self._duzenlemeler = veri["duzenlemeler"]
+            self._haric = set(veri["haric"])
             self._excel_damga = _damga(cikti)
             self._review = review
+            try:
+                olay = self._review_olayi(review)
+            except Exception as e:
+                # Yapısı geçerli ama açılamayan taslak (ör. eski sürümün şeması):
+                # her açılışta aynı soruyu sorup sessizce düşmesin.
+                self._review = self._taslak_bekleyen = None
+                self._duzenlemeler, self._haric = {}, set()
+                return {"hata": self._taslak_yedekle(e)}
             if degisti:
                 self._taslak_yaz()
-        return {**self._review_olayi(review), "excel_degisti": degisti}
+        return {**olay, "excel_degisti": degisti}
 
     def taslak_sil(self) -> dict:
         """Kullanıcı yarım kalan incelemeye devam etmek istemedi."""
@@ -696,21 +718,31 @@ class Api:
             review = veri["review"]
             if (veri["surum"] != 1 or not isinstance(veri["sema"], sema.Sema)
                     or not isinstance(review["mevcut"], list)
-                    or not isinstance(review["yeni"], list)):
+                    or not isinstance(review["yeni"], list)
+                    or not isinstance(review["atlanmis"], list)
+                    or not isinstance(review["cikti"], str)
+                    or not isinstance(veri["klasor"], str)
+                    or not isinstance(veri["duzenlemeler"], dict)
+                    or not isinstance(veri["haric"], list)):
                 raise ValueError("beklenmeyen yapı")
+            veri["damga"]
             ozet = {"sayi": len(review["yeni"]), "tarih": veri["tarih"],
                     "cikti": os.path.basename(review["cikti"])}
         except Exception as e:      # pickle her türlü hatayı verebilir; açılış çökmemeli
-            yedek = self._taslak.with_name(
-                f"inceleme_taslagi-{time.strftime('%Y%m%d-%H%M%S')}.bozuk")
-            try:
-                os.replace(self._taslak, yedek)
-            except OSError:
-                yedek = self._taslak
-            return {"hata": f"Yarım kalan inceleme okunamadı ({type(e).__name__}).\n"
-                            f"Dosya: {yedek}"}
+            return {"hata": self._taslak_yedekle(e)}
         self._taslak_bekleyen = veri
         return ozet
+
+    def _taslak_yedekle(self, e: Exception) -> str:
+        """Açılamayan taslağı silmeden yedek adla bırakır; kullanıcıya mesaj döner."""
+        yedek = self._taslak.with_name(
+            f"inceleme_taslagi-{time.strftime('%Y%m%d-%H%M%S')}.bozuk")
+        try:
+            os.replace(self._taslak, yedek)
+        except OSError:
+            yedek = self._taslak
+        return (f"Yarım kalan inceleme okunamadı ({type(e).__name__}).\n"
+                f"Dosya: {yedek}")
 
     def _taslak_yaz(self) -> bool:
         """Onay bekleyen incelemeyi atomik olarak diske yazar; yazılamazsa False.
@@ -725,6 +757,7 @@ class Api:
                 return True
             veri = {"surum": 1, "review": self._review, "sema": self._sema,
                     "duzenlemeler": dict(self._duzenlemeler),
+                    "haric": sorted(self._haric),
                     "klasor": self._klasor, "damga": self._excel_damga,
                     "tarih": time.strftime("%d.%m.%Y %H:%M")}
             gecici = self._taslak.with_suffix(".tmp")
@@ -740,6 +773,7 @@ class Api:
         with self._taslak_kilit:
             self._review = None
             self._duzenlemeler = {}
+            self._haric = set()
             try:
                 self._taslak.unlink(missing_ok=True)
             except OSError:
@@ -886,6 +920,7 @@ class Api:
                     # izdüşümü gider (datetime/float JSON'da tur atmasın).
                     self._review = veri
                     self._duzenlemeler = {}
+                    self._haric = set()
                     self._excel_damga = _damga(veri["cikti"])
                     gonderilecek.append(self._review_olayi(veri))
                     if not self._taslak_yaz():
@@ -960,6 +995,7 @@ class Api:
                 "sema_farki": payload.get("sema_farki"),
                 # review.js bunları `R.duzenlemeler`e koyar; onayda geri gelir.
                 "duzenlemeler": {str(i): f for i, f in self._duzenlemeler.items()},
+                "haric": sorted(self._haric),
                 "atlanan": len(payload["atlanmis"])}
 
     def _kurallari_ogren(self, satirlar: list, hatirla: list,

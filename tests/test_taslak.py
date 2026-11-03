@@ -161,7 +161,7 @@ def test_excel_okunamazsa_devam_edilmez_taslak_kalir(kok, tmp_path, monkeypatch)
 
     yeni = _api(kok)
     yeni.baslangic_durumu()
-    assert "hata" in yeni.taslak_devam()
+    assert yeni.taslak_devam()["tekrar"] is True
     assert yeni._review is None
     assert (kok / "inceleme_taslagi.pkl").exists()
 
@@ -172,3 +172,60 @@ def test_satir_dogrula_gecersiz_formu_reddeder(kok, tmp_path, form):
     _review_gelsin(api, tmp_path, [_satir("GIB2024000000101")])
     api.satir_dogrula(0, form)            # JS'ten gelen çöp çökertmemeli
     assert api._duzenlemeler.get(0, {}).get("sirket_adi") is None
+
+
+def test_haric_tutma_taslaga_yazilir(kok, tmp_path):
+    """Taslaktan dönünce hariç tutulanlar sıfırlansa, kullanıcının ayıkladığı
+    mükerrer faturalar fark edilmeden Excel'e yazılırdı."""
+    api = _api(kok)
+    _review_gelsin(api, tmp_path, [_satir("GIB2024000000101"), _satir("GIB2024000000102")])
+    assert api.review_haric(1, True) is True
+    assert api.review_haric(0, True) is True
+    assert api.review_haric(0, False) is True
+
+    yeni = _api(kok)
+    yeni.baslangic_durumu()
+    assert yeni.taslak_devam()["haric"] == [1]
+
+
+@pytest.mark.parametrize("i, durum", [(5, True), (-1, True), ("x", True), (0, "evet")])
+def test_review_haric_gecersiz_girdiyi_reddeder(kok, tmp_path, i, durum):
+    api = _api(kok)
+    _review_gelsin(api, tmp_path, [_satir("GIB2024000000101")])
+    assert api.review_haric(i, durum) is False
+    assert api._haric == set()
+
+
+def test_bekleyen_taslak_varken_yeni_kosu_baslamaz(kok, tmp_path, monkeypatch):
+    """Yeni koşunun review'ı taslağın üstüne yazılır; karar verilmemiş eski
+    inceleme (harcanan kota) sessizce giderdi."""
+    _review_gelsin(_api(kok), tmp_path, [_satir("GIB2024000000101")])
+    api = _api(kok)
+    api.baslangic_durumu()
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    monkeypatch.setattr("api.worker", lambda *a, **k: None)
+    sonuc = api.basla({"klasor": str(tmp_path), "cikti": "x"})
+    assert "yarım kalan" in sonuc.get("hata", "") and not api._calisiyor
+
+
+def test_bitmis_incelemenin_taslagi_yeniden_yazilmaz(kok, tmp_path):
+    """Onayla ile alandan çıkış yarışırsa geç kalan yazma silinen taslağı
+    diriltmemeli; yoksa onaylanmış inceleme açılışta yeniden sorulur."""
+    api = _api(kok)
+    _review_gelsin(api, tmp_path, [_satir("GIB2024000000101")])
+    api._review_bitir()
+    api._taslak_yaz()
+    assert not (kok / "inceleme_taslagi.pkl").exists()
+
+
+def test_taslak_devam_beklenmeyen_hatada_yedekler(kok, tmp_path, monkeypatch):
+    """Okunup açılamayan taslak her açılışta aynı soruyu sorup sessizce
+    düşmemeli: hata dönülür, dosya yedeklenir."""
+    _review_gelsin(_api(kok), tmp_path, [_satir("GIB2024000000101")])
+    api = _api(kok)
+    api.baslangic_durumu()
+    monkeypatch.setattr(api, "_review_olayi", lambda p: 1 / 0)
+    assert "hata" in api.taslak_devam()
+    assert api._review is None and api._taslak_bekleyen is None   # basla kilitli kalmasın
+    assert not (kok / "inceleme_taslagi.pkl").exists()
+    assert len(list(kok.glob("inceleme_taslagi*.bozuk"))) == 1
