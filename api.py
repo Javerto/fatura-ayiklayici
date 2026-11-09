@@ -13,6 +13,7 @@ import json
 import os
 import pathlib
 import queue
+import re
 import sys
 import threading
 import time
@@ -46,6 +47,9 @@ else:
 ENV_DOSYASI      = _BASE / ".env"
 GECMIS_DOSYASI   = _BASE / "gecmis.json"
 DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
+
+# Windows'ta dosya adında yer alamayan karakterler.
+_YASAK_AD = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
 
@@ -178,6 +182,13 @@ class Api:
         kalite = str(ayarlar.get("kalite") or "1.5")
         if kalite not in KALITELER:
             return {"hata": "Geçersiz okuma kalitesi."}
+        # Ad koşudan önce denetlenir: Excel ancak onayda yazılıyor, o noktada
+        # ad değiştirilemiyor ve harcanan kotayla birlikte tüm iş gidiyordu.
+        cikti = ayarlar.get("cikti") or "faturalar"
+        if not isinstance(cikti, str) or _YASAK_AD.search(cikti):
+            return {"hata": "Çıktı dosya adında şu karakterler kullanılamaz:  "
+                            '\\ / : * ? " < > |'}
+        cikti_adi = (cikti.strip() or "faturalar") + ".xlsx"
         # Arayüz butonu kilitliyor ama JS bir güven sınırı: ikinci bir çağrı
         # `_log_q`'yu değiştirip ilk worker'ın tüm çıktısını (harcanan kotayla
         # birlikte) okunmayan bir kuyrukta bırakıyordu.
@@ -199,7 +210,6 @@ class Api:
             if sema_hatasi:
                 return self._bozuk_sema(sema_hatasi)
 
-            cikti_adi = (ayarlar.get("cikti") or "faturalar").strip() + ".xlsx"
             self._klasor = klasor
             self._cikti = os.path.join(klasor, cikti_adi)
             self._atlanmis = []
