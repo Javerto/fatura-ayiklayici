@@ -245,8 +245,12 @@ class Api:
             # yazardı; geçersiz karakter / CON gibi ayrılmış ad ise ancak tüm
             # kota harcandıktan sonra, kaydetme anında patlıyordu.
             # os.path.isreserved 3.13+; README 3.11'i destekliyor, o yüzden elle.
-            ad = ayarlar.get("cikti") or "faturalar"
-            # Metin olmayan değer `.strip()`te JS'e ham hata olarak kaçıyordu.
+            # Varsayılan yalnızca eksik ya da boş metin için: `or` kullanınca
+            # 0/False/[] de varsayılana düşüp reddedilmeden koşuyordu. Metin
+            # olmayan değer ise `.strip()`te JS'e ham hata olarak kaçıyordu.
+            ad = ayarlar.get("cikti")
+            if ad is None or ad == "":
+                ad = "faturalar"
             ad = ad.strip() if isinstance(ad, str) else ""
             if (any(k in '<>:"/\\|?*' or ord(k) < 32 for k in ad)
                     or ad.strip(". ") == ""

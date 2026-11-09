@@ -125,7 +125,8 @@ def test_cikti_adi_secilen_klasorun_disina_cikamaz(tmp_path, monkeypatch):
     monkeypatch.setattr(api, "_pompa", lambda: None)
 
     for ad in [r"..\x", "../x", r"C:\x", "a<b", "a:b", "x/y", "fatura?",
-               "CON", "nul", "COM1", "con.yedek","a\x00b", "a\tb", 5]:
+               "CON", "nul", "COM1", "con.yedek","a\x00b", "a\tb", 5,
+               0, False, []]:      # `or "faturalar"` bunları varsayılana çeviriyordu
         sonuc = api.basla({"klasor": str(tmp_path), "cikti": ad})
         assert "hata" in sonuc, ad
         assert not api._calisiyor
