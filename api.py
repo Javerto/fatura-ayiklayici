@@ -9,12 +9,13 @@ Eski `gui.py`'nin tkinter'dan bağımsız tüm sorumlulukları buraya taşındı
 """
 
 import base64
+import io
 import json
 import logging
 import os
 import pathlib
+import pickle
 import queue
-import re
 import sys
 import threading
 import time
@@ -28,7 +29,7 @@ import fatura
 import gemini
 import sema
 from duzeltme import kural_ekle, kurallari_oku, kurallari_yaz
-from excel_utils import excel_olustur
+from excel_utils import arsiv_semasi, excel_olustur, mevcut_verileri_oku, sema_farki
 from extraction import pdf_deger_bul, pdf_den_veri_cek, veri_dogrula, xml_gorunumu
 from elogo import ElogoIstemcisi
 from elogo_indir import (OIDC_ANAHTARI, indir as elogo_indir_akisi,
@@ -50,12 +51,12 @@ ENV_DOSYASI      = _BASE / ".env"
 GECMIS_DOSYASI   = _BASE / "gecmis.json"
 DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
 GUNLUK_DOSYASI   = _BASE / "gunluk.txt"
+# Windows'un aygıt adları: uzantıyla bile (CON.xlsx) dosya olarak yazılamaz.
+AYRILMIS_ADLAR = {"CON", "PRN", "AUX", "NUL",
+                  *(f"{a}{i}" for a in ("COM", "LPT") for i in range(1, 10))}
 
 # Kurulumu `main.gunluk_kur` yapar; testlerde dosyaya yazılmaz.
 gunluk = logging.getLogger("FaturaAyiklayici")
-
-# Windows'ta dosya adında yer alamayan karakterler.
-_YASAK_AD = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 
 ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
 
@@ -76,6 +77,26 @@ def _xml_mi(satir: dict) -> bool:
     """Satırın kaynağı yalnızca XML mi? (PDF'i olan XML'de dosya_yolu PDF'tir.)"""
     yol = str(satir.get("dosya_yolu") or "")
     return yol.lower().endswith(".xml") and os.path.exists(yol)
+
+
+class _TaslakOkuyucu(pickle.Unpickler):
+    """Yalnız taslağın içerdiği türleri yükler; başka hiçbir çağrılabilir çalışmaz."""
+    _IZINLI = {("datetime", "datetime"), ("datetime", "date"),
+               ("sema", "Sema"), ("sema", "Alan")}
+
+    def find_class(self, modul, ad):
+        if (modul, ad) not in self._IZINLI:
+            raise pickle.UnpicklingError(f"izin verilmeyen tür: {modul}.{ad}")
+        return super().find_class(modul, ad)
+
+
+def _damga(yol: str):
+    """Dosyanın (mtime, boyut) damgası; yoksa None. Değişip değişmediğini anlamak için."""
+    try:
+        st = os.stat(yol)
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size
 
 
 def pencere_boyutu() -> tuple[int, int]:
@@ -106,6 +127,7 @@ class Api:
         self._gecmis   = kok / "gecmis.json"
         self._duzeltme = kok / "duzeltmeler.json"
         self._alanlar  = kok / "alanlar.json"
+        self._taslak   = kok / "inceleme_taslagi.pkl"
         # İlk açılışta dosya tohumdan yazılır. Koşu başlarken yeniden okunur;
         # gözden geçirme ve onay o koşunun şemasıyla çalışır.
         self._sema = sema.oku(self._alanlar)
@@ -117,6 +139,11 @@ class Api:
         self._atlanmis = []
         self._baslangic = 0.0
         self._review = None            # onay bekleyen worker çıktısı
+        self._duzenlemeler = {}        # {i: form} — taslağa giden düzeltmeler
+        self._haric = set()            # hariç tutulan satırlar — taslak için
+        self._excel_damga = None       # review geldiğinde çıktının (mtime, boyut)
+        self._taslak_bekleyen = None   # açılışta okunan, henüz açılmamış taslak
+        self._taslak_kilit = threading.Lock()   # taslak yazma/silme
         self._calisiyor = False        # bir worker sürüyor mu
         self._deneniyor = False        # editörde bir "Dene" sürüyor mu
         self._baslatma_kilidi = threading.Lock()   # `basla` kontrol-ve-ata
@@ -144,6 +171,7 @@ class Api:
             "api_key_var": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
             "kalite": os.environ.get("KALITE", "1.5"),
             "klasor": son_klasor,
+            "taslak": self._taslak_oku(),
         }
 
     def tema_kaydet(self, ad: str) -> bool:
@@ -188,13 +216,6 @@ class Api:
         kalite = str(ayarlar.get("kalite") or "1.5")
         if kalite not in KALITELER:
             return {"hata": "Geçersiz okuma kalitesi."}
-        # Ad koşudan önce denetlenir: Excel ancak onayda yazılıyor, o noktada
-        # ad değiştirilemiyor ve harcanan kotayla birlikte tüm iş gidiyordu.
-        cikti = ayarlar.get("cikti") or "faturalar"
-        if not isinstance(cikti, str) or _YASAK_AD.search(cikti):
-            return {"hata": "Çıktı dosya adında şu karakterler kullanılamaz:  "
-                            '\\ / : * ? " < > |'}
-        cikti_adi = (cikti.strip() or "faturalar") + ".xlsx"
         # Arayüz butonu kilitliyor ama JS bir güven sınırı: ikinci bir çağrı
         # `_log_q`'yu değiştirip ilk worker'ın tüm çıktısını (harcanan kotayla
         # birlikte) okunmayan bir kuyrukta bırakıyordu.
@@ -204,6 +225,10 @@ class Api:
         with self._baslatma_kilidi:
             if self._calisiyor or self._deneniyor:
                 return {"hata": "Zaten bir işlem sürüyor."}
+            # Yeni koşunun review'ı taslağın üstüne yazılır; karar verilmemiş
+            # eski inceleme (harcanan kota) sessizce giderdi.
+            if self._taslak_bekleyen is not None:
+                return {"hata": "Önce yarım kalan incelemeye devam edin ya da taslağı silin."}
             api_key = os.environ.get("GEMINI_API_KEY", "").strip()
             if not api_key:
                 return {"hata": "api_key"}
@@ -216,6 +241,18 @@ class Api:
             if sema_hatasi:
                 return self._bozuk_sema(sema_hatasi)
 
+            # JS bir güven sınırı: `..\x` ya da `C:\x` seçilen klasörün dışına
+            # yazardı; geçersiz karakter / CON gibi ayrılmış ad ise ancak tüm
+            # kota harcandıktan sonra, kaydetme anında patlıyordu.
+            # os.path.isreserved 3.13+; README 3.11'i destekliyor, o yüzden elle.
+            ad = ayarlar.get("cikti") or "faturalar"
+            # Metin olmayan değer `.strip()`te JS'e ham hata olarak kaçıyordu.
+            ad = ad.strip() if isinstance(ad, str) else ""
+            if (any(k in '<>:"/\\|?*' or ord(k) < 32 for k in ad)
+                    or ad.strip(". ") == ""
+                    or ad.split(".")[0].rstrip().upper() in AYRILMIS_ADLAR):
+                return {"hata": "Çıktı adı geçersiz: farklı bir dosya adı yazın."}
+            cikti_adi = ad + ".xlsx"
             self._klasor = klasor
             self._cikti = os.path.join(klasor, cikti_adi)
             self._atlanmis = []
@@ -573,10 +610,22 @@ class Api:
     def satir_dogrula(self, i: int, form: dict) -> list:
         """Formdaki hâliyle satırın uyarıları — düzenleme sırasında çağrılır."""
         satir = self._satir(i)
-        if not satir:
+        if not satir or not (isinstance(form, dict) and all(
+                isinstance(k, str) and isinstance(v, str) for k, v in form.items())):
             return []
+        # Alandan çıkınca çağrılıyor: düzeltme o anda taslağa da yazılır.
+        self._duzenlemeler[int(i)] = dict(form)
+        self._taslak_yaz()
         return veri_dogrula(form_satira_uygula(satir, form, self._sema),
                             self._baska_nolar(haric_i=int(i)), self._sema)
+
+    def review_haric(self, i: int, haric: bool) -> bool:
+        """Hariç tutma kutusu — yalnız taslak için; onay listeyi ayrıca alır."""
+        if self._satir(i) is None or not isinstance(haric, bool):
+            return False
+        (self._haric.add if haric else self._haric.discard)(int(i))
+        self._taslak_yaz()
+        return True
 
     def review_onayla(self, duzenlemeler: dict, haric: list,
                       hatirla: list) -> dict:
@@ -605,7 +654,7 @@ class Api:
             # Tüm yeni faturalar hariç tutuldu — mevcut Excel'e dokunma.
             self._gecmis_kaydet(0, len(self._atlanmis))
             self._onizlemeyi_kapat()
-            self._review = None
+            self._review_bitir()
             return {"ok": True, "yazilan": 0, "dokunulmadi": True,
                     "cikti": self._mevcut_cikti()}
 
@@ -614,14 +663,15 @@ class Api:
             excel_olustur(nihai, self._review["cikti"],
                           self._review.get("sema") or self._sema)
         except ExcelHatasi as e:
-            return {"hata": str(e)}          # pencere açık kalsın, düzenlemeler kaybolmasın
+            # Pencere açık kalsın, düzenlemeler kaybolmasın; taslak da durur.
+            return {"hata": str(e)}
 
         self._cikti = self._review["cikti"]
         self._onizlemeyi_kapat()
         kaydedilen, kural_hatasi = self._kurallari_ogren(yeni, hatirla, haric_kume)
         yazilan = len(nihai) - len(self._review["mevcut"])
         self._gecmis_kaydet(yazilan, len(self._atlanmis))
-        self._review = None
+        self._review_bitir()
         sonuc = {"ok": True, "yazilan": yazilan, "kural": kaydedilen,
                  "cikti": self._cikti}
         if kural_hatasi:
@@ -629,10 +679,152 @@ class Api:
         return sonuc
 
     def review_iptal(self) -> dict:
-        self._review = None
+        self._review_bitir()
         self._onizlemeyi_kapat()
         self._gecmis_kaydet(0, len(self._atlanmis))
         return {"ok": True, "cikti": self._mevcut_cikti()}
+
+    # ── İnceleme taslağı ─────────────────────────────────────────────
+    # Onay bekleyen satırlar yalnız bellekte durursa pencere kapanınca ya da
+    # uygulama çökünce çıkarım (harcanan kota) ve düzeltmeler kaybolur.
+
+    def taslak_devam(self) -> dict:
+        """Açılışta bulunan taslaktan inceleme ekranını açar (review olayını döndürür)."""
+        with self._baslatma_kilidi:
+            if self._calisiyor or self._deneniyor or self._review is not None:
+                return {"hata": "Bir işlem ya da inceleme sürerken taslak açılamaz."}
+            veri = self._taslak_bekleyen
+            if veri is None:
+                return {"hata": "Devam edilecek bir inceleme yok."}
+            review = dict(veri["review"])
+            cikti = review["cikti"]
+            degisti = _damga(cikti) != veri["damga"]
+            if degisti:
+                # Taslaktan sonra Excel değişmiş (ör. başka bir koşu onaylandı):
+                # eski `mevcut` ile yazmak o faturaları silerdi. Worker gibi yeniden oku.
+                try:
+                    review["sema"] = arsiv_semasi(cikti, veri["sema"])
+                    review["mevcut"], _ = mevcut_verileri_oku(cikti, review["sema"])
+                    review["sema_farki"] = sema_farki(cikti, veri["sema"])
+                except ExcelHatasi as e:
+                    return {"hata": f"{e}\nTaslak silinmedi; Excel'i düzeltip "
+                                    "yeniden deneyin.", "tekrar": True}
+            self._taslak_bekleyen = None
+            self._sema = veri["sema"]
+            self._klasor = veri["klasor"]
+            self._cikti = cikti
+            self._baslangic = time.time()
+            self._duzenlemeler = veri["duzenlemeler"]
+            self._haric = set(veri["haric"])
+            self._excel_damga = _damga(cikti)
+            self._review = review
+            try:
+                olay = self._review_olayi(review)
+            except Exception as e:
+                # Yapısı geçerli ama açılamayan taslak (ör. eski sürümün şeması):
+                # her açılışta aynı soruyu sorup sessizce düşmesin.
+                self._review = self._taslak_bekleyen = None
+                self._duzenlemeler, self._haric = {}, set()
+                return {"hata": self._taslak_yedekle(e)}
+            if degisti:
+                self._taslak_yaz()
+        return {**olay, "excel_degisti": degisti}
+
+    def taslak_sil(self) -> dict:
+        """Kullanıcı yarım kalan incelemeye devam etmek istemedi."""
+        with self._baslatma_kilidi:
+            if self._review is not None:
+                return {"hata": "Açık incelemenin taslağı silinemez."}
+            self._taslak_bekleyen = None
+            try:
+                self._taslak.unlink(missing_ok=True)
+            except OSError as e:
+                return {"hata": f"Taslak silinemedi: {e}"}
+        return {"ok": True}
+
+    def _taslak_oku(self) -> dict | None:
+        """Açılışta yarım kalan taslağın özeti; yoksa None, bozuksa {"hata"}.
+
+        Bozuk dosya silinmez, yanına yedek adla taşınır: içindeki çıkarım
+        elle kurtarılabilir ve her açılışta aynı soru sorulmaz.
+        """
+        self._taslak_bekleyen = None
+        if self._review is not None:   # sayfa yenilendi: açık incelemenin kendi taslağı
+            return None
+        if not self._taslak.exists():
+            return None
+        try:
+            veri = _TaslakOkuyucu(io.BytesIO(self._taslak.read_bytes())).load()
+            review = veri["review"]
+            if (veri["surum"] != 1 or not isinstance(veri["sema"], sema.Sema)
+                    or not isinstance(review["mevcut"], list)
+                    or not isinstance(review["yeni"], list)
+                    or not isinstance(review["atlanmis"], list)
+                    or not isinstance(review["cikti"], str)
+                    or not isinstance(veri["klasor"], str)
+                    or not isinstance(veri["duzenlemeler"], dict)
+                    or not isinstance(veri["haric"], list)):
+                raise ValueError("beklenmeyen yapı")
+            veri["damga"]
+            ozet = {"sayi": len(review["yeni"]), "tarih": veri["tarih"],
+                    "cikti": os.path.basename(review["cikti"])}
+        except Exception as e:      # pickle her türlü hatayı verebilir; açılış çökmemeli
+            return {"hata": self._taslak_yedekle(e)}
+        self._taslak_bekleyen = veri
+        return ozet
+
+    def _taslak_yedekle(self, e: Exception) -> str:
+        """Açılamayan taslağı silmeden yedek adla bırakır; kullanıcıya mesaj döner."""
+        yedek = self._taslak.with_name(
+            f"inceleme_taslagi-{time.strftime('%Y%m%d-%H%M%S')}.bozuk")
+        try:
+            os.replace(self._taslak, yedek)
+        except OSError:
+            yedek = self._taslak
+        return (f"Yarım kalan inceleme okunamadı ({type(e).__name__}).\n"
+                f"Dosya: {yedek}")
+
+    def _taslak_yaz(self) -> bool:
+        """Onay bekleyen incelemeyi atomik olarak diske yazar; yazılamazsa False.
+
+        pickle, çünkü satırlarda datetime/float, şemada `Sema` değer nesnesi
+        var; JSON'da her birine ayrı çevirici gerekirdi. Dosya kullanıcının
+        kendi ayar klasöründe; yine de okuma `_TaslakOkuyucu` ile yalnız
+        taslağın türlerini kabul eder, keyfi kod çalıştırılamaz.
+        """
+        with self._taslak_kilit:
+            if self._review is None:     # onay/iptal geç kalan bir yazmayı geçti
+                return True
+            veri = {"surum": 1, "review": self._review, "sema": self._sema,
+                    "duzenlemeler": dict(self._duzenlemeler),
+                    "haric": sorted(self._haric),
+                    "klasor": self._klasor, "damga": self._excel_damga,
+                    "tarih": time.strftime("%d.%m.%Y %H:%M")}
+            gecici = self._taslak.with_suffix(".tmp")
+            try:
+                with open(gecici, "wb") as f:
+                    f.write(pickle.dumps(veri))
+                    f.flush()
+                    os.fsync(f.fileno())    # elektrik kesilirse eski taslak boş dosyayla değişmesin
+                os.replace(gecici, self._taslak)
+            except Exception:       # taslak bir korumadır; hatası incelemeyi bozmamalı
+                try:
+                    gecici.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                return False
+        return True
+
+    def _review_bitir(self):
+        """İnceleme onaylandı ya da iptal edildi: bellekten ve diskten kalkar."""
+        with self._taslak_kilit:
+            self._review = self._taslak_bekleyen = None
+            self._duzenlemeler = {}
+            self._haric = set()
+            try:
+                self._taslak.unlink(missing_ok=True)
+            except OSError:
+                pass        # silinemezse açılışta sorulur; Excel'deki mükerrer uyarısı yakalar
 
     def _onizlemeyi_kapat(self):
         """Açık PDF'i bırak — yoksa MuPDF dosyayı süreç boyunca kilitli tutar
@@ -784,7 +976,14 @@ class Api:
                     self._review = veri
                     gunluk.info("Koşu bitti: %d yeni fatura onay bekliyor, %d atlandı",
                                 len(veri["yeni"]), len(veri["atlanmis"]))
+                    self._duzenlemeler = {}
+                    self._haric = set()
+                    self._excel_damga = _damga(veri["cikti"])
                     gonderilecek.append(self._review_olayi(veri))
+                    if not self._taslak_yaz():
+                        gonderilecek.append({"t": "warn", "d": (
+                            f"İnceleme taslağı yazılamadı ({self._taslak}). "
+                            "Onaylamadan kapatırsanız çıkarılan veriler kaybolur.")})
                     bitti = True
                 elif tag == "done":
                     atlanmis, islenen, _uyarilar = veri
@@ -831,10 +1030,14 @@ class Api:
         satirlar = []
         for i, satir in enumerate(payload["yeni"]):
             yol = str(satir.get("dosya_yolu") or "")
+            # Taslaktan dönülürse kullanıcının yazdığı metin, çevrilmiş değer değil.
+            form = self._duzenlemeler.get(i)
             satirlar.append({
                 "i":        i,
-                "form":     satir_form_degerleri(satir, self._sema),
-                "uyarilar": veri_dogrula(satir, baska_nolar, self._sema),
+                "form":     form or satir_form_degerleri(satir, self._sema),
+                "uyarilar": veri_dogrula(
+                    form_satira_uygula(satir, form, self._sema) if form else satir,
+                    baska_nolar, self._sema),
                 "dosya":    fatura.dosya_adi(satir),
                 "pdf":      yol.lower().endswith(".pdf") and os.path.exists(yol),
                 "xml":      _xml_mi(satir),
@@ -848,6 +1051,9 @@ class Api:
                 "kesildi": payload.get("kesildi", False),
                 # Koşu düzeyinde uyarı; satırların (alan, mesaj) sözleşmesinin dışında.
                 "sema_farki": payload.get("sema_farki"),
+                # review.js bunları `R.duzenlemeler`e koyar; onayda geri gelir.
+                "duzenlemeler": {str(i): f for i, f in self._duzenlemeler.items()},
+                "haric": sorted(self._haric),
                 "atlanan": len(payload["atlanmis"])}
 
     def _kurallari_ogren(self, satirlar: list, hatirla: list,

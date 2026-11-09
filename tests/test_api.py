@@ -1,8 +1,6 @@
 """Api sınıfının pywebview sözleşmesine uyduğunu doğrular."""
 import threading
 
-import pytest
-
 from api import Api
 
 
@@ -117,27 +115,19 @@ def test_kalite_kaydet_yalnizca_desteklenen_degerleri_yazar(tmp_path):
     assert api.kalite_kaydet("3.0") is True
 
 
-@pytest.mark.parametrize("ad", ["Kasım/2026", "rapor 09:11", "fatura?", "a\\b", "a\tb", 5])
-def test_dosya_adi_olamayan_cikti_kosu_baslamadan_reddedilir(tmp_path, monkeypatch, ad):
-    """Ad denetlenmiyordu: koşu sonuna kadar çalışıp kotayı harcıyor, Excel
-    ancak onayda yazılamıyordu. Gözden geçirme ekranında adı değiştirmenin
-    yolu yok; tek çıkış iptaldi, yani tüm iş gidiyordu."""
+def test_cikti_adi_secilen_klasorun_disina_cikamaz(tmp_path, monkeypatch):
+    r"""JS bir güven sınırı: `..\x` klasörün dışına, `C:\x` başka bir sürücüye
+    yazardı; `<` gibi karakterler kaydetme anında çöküyordu. Metin olmayan
+    değer (5) ise `.strip()`te JS'e ham hata olarak kaçıyordu."""
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     monkeypatch.setattr("api.worker", lambda *a, **k: None)
     api = Api(kok=tmp_path)
     monkeypatch.setattr(api, "_pompa", lambda: None)
 
-    sonuc = api.basla({"klasor": str(tmp_path), "cikti": ad})
-
-    assert "hata" in sonuc and not api._calisiyor
-
-
-def test_bos_cikti_adi_varsayilana_duser(tmp_path, monkeypatch):
-    """Yalnızca boşluktan oluşan ad `.xlsx` adında bir dosya üretiyordu."""
-    monkeypatch.setenv("GEMINI_API_KEY", "test")
-    monkeypatch.setattr("api.worker", lambda *a, **k: None)
-    api = Api(kok=tmp_path)
-    monkeypatch.setattr(api, "_pompa", lambda: None)
-
-    assert "ok" in api.basla({"klasor": str(tmp_path), "cikti": "   "})
-    assert api._cikti == str(tmp_path / "faturalar.xlsx")
+    for ad in [r"..\x", "../x", r"C:\x", "a<b", "a:b", "x/y", "fatura?",
+               "CON", "nul", "COM1", "con.yedek","a\x00b", "a\tb", 5]:
+        sonuc = api.basla({"klasor": str(tmp_path), "cikti": ad})
+        assert "hata" in sonuc, ad
+        assert not api._calisiyor
+    assert "ok" in api.basla({"klasor": str(tmp_path), "cikti": "Ocak 2024"})
+    assert api._cikti == str(tmp_path / "Ocak 2024.xlsx")

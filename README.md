@@ -93,7 +93,7 @@ Modelle ilgili her sabit `gemini.py` içindedir: `GEMMA_MODEL`, `MAX_DENEME`, `T
 | `excel_utils.py` | Excel okuma/yazma, bağlantılar, Özet sayfası |
 | `ozet.py` | Özet hesaplama (aylık, firma, para birimi bazlı) |
 | `hatalar.py` | Hata sınıfları |
-| `tests/` | pytest test paketi (179 test) |
+| `tests/` | pytest test paketi |
 | `build.bat` | Windows EXE derleme betiği |
 
 ## 📜 Lisans
