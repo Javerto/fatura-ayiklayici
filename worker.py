@@ -6,6 +6,7 @@ UI'dan bağımsızdır; dış dünyayla yalnızca `log_q` kuyruğu ve `stop_even
 """
 
 import concurrent.futures
+import logging
 import os
 import queue
 import threading
@@ -21,6 +22,9 @@ from hatalar import (APIKeyHatasi, InternetHatasi, PDFHatasi, XMLHatasi,
                      ModelHatasi, ExcelHatasi)
 from excel_utils import arsiv_semasi, mevcut_verileri_oku, sema_farki
 from duzeltme import kural_uygula
+
+# Ekrana hatanın yalnızca tipi ve mesajı gider; izi günlük dosyasına yazılır.
+gunluk = logging.getLogger("FaturaAyiklayici")
 
 
 def is_listesi(klasor: str) -> tuple[list[str], list[str]]:
@@ -66,6 +70,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
                 bilgi=lambda mesaj: log_q.put(("info", mesaj)),
                 iptal=stop_event)
         except Exception as e:
+            gunluk.exception("Model istemcisi kurulamadı")
             log("critical", f"Bağlantı kurulamadı: {e}")
             log_q.put(("done", ([], 0, [])))
             return
@@ -205,6 +210,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             except XMLHatasi as e:
                 return ("atla", (dosya_adi, str(e)))
             except Exception as e:
+                gunluk.exception("Beklenmedik hata: %s", dosya_adi)
                 return ("atla", (dosya_adi, f"Beklenmedik hata — {type(e).__name__}: {e}"))
         else:
             if not pdf_gecerli_mi(dosya):
@@ -226,6 +232,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
             except (PDFHatasi, InternetHatasi, ModelHatasi) as e:
                 return ("atla", (dosya_adi, str(e)))
             except Exception as e:
+                gunluk.exception("Beklenmedik hata: %s", dosya_adi)
                 return ("atla", (dosya_adi, f"Beklenmedik hata — {type(e).__name__}: {e}"))
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -296,6 +303,7 @@ def worker(api_key: str, klasor: str, cikti_adi: str, log_q: queue.Queue,
         except XMLHatasi as e:
             atla(dosya_adi, str(e))
         except Exception as e:
+            gunluk.exception("Beklenmedik hata: %s", dosya_adi)
             atla(dosya_adi, f"Beklenmedik hata — {type(e).__name__}: {e}")
 
     # ── İşlem sonu: onaya gönder ───────────────────────────────────────

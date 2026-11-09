@@ -156,3 +156,14 @@ def test_worker_api_key_hatasinda_tum_isi_durdurur(tmp_path):
     kritikler = [d for t, d in mesajlar if t == "critical"]
     assert len(kritikler) == 1                   # 5 thread aynı hatayı bağırmasın
     assert "API key" in kritikler[0]
+
+
+def test_beklenmedik_hata_iziyle_gunluge_yazilir(tmp_path, caplog):
+    """Ekrana yalnızca "Beklenmedik hata — RuntimeError" düşüyordu; hatanın
+    nerede olduğunu gösteren iz hiçbir yere yazılmıyordu."""
+    _pdf_olustur(tmp_path / "f.pdf")
+
+    worker("FAKE_KEY", str(tmp_path), "cikti.xlsx", queue.Queue(), threading.Event(),
+           istemci=SahteIstemci(RuntimeError("patladı")))
+
+    assert any(k.exc_info and k.exc_info[0] is RuntimeError for k in caplog.records)

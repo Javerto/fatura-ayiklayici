@@ -44,6 +44,7 @@ CLAUDE.md'den taşındı; modül bazında başvuru. Veri güvenliği kuralları 
 - **`gecmis.json`** – Log of previous runs (folder, output file name, processed count, duration). Also stored in AppData when frozen.
 - **`duzeltmeler.json`** – VKN bazlı öğrenen düzeltme kuralları. Frozen modda `%APPDATA%\FaturaAyiklayici`, değilse proje klasöründe.
 - **`alanlar.json`** – Şema (bkz. `sema.py`, `CONTEXT.md`). İlk açılışta tohumdan yazılır; aynı konum kuralı. Gitignore'da.
+- **`gunluk.txt`** – Hata günlüğü (`main.gunluk_kur`; aynı konum kuralı, gitignore'da). 512 KB'de döner, bir eskisi `gunluk.txt.1` olarak kalır. Yazılanlar: açılış, koşu başı/sonu, ekrana düşen `critical`/`warn`/`atlandi` olayları, yakalanmamış hatalar ve "Beklenmedik hata" olarak atlanan dosyaların izi. **Fatura içeriği yazılmaz.** eLogo hatalarında istisna metni de yazılmaz (token ya da yanıt gövdesi taşıyabilir): yalnızca tip adı ve hatanın geçtiği satırlar. Kaydedici adı `FaturaAyiklayici`; kök düzey WARNING'de kalır ki kütüphanelerin INFO satırları (httpx istek adresleri) girmesin. Yalnızca `main()` kurar — testler ve `--saglik` dosyaya yazmaz.
 - **`faturalar.xlsx`** – Example output file (can be deleted).
 - **eLogo oturumu** – Token diske yazılmaz; `Api._elogo_oturum` aynı açılışta yeniden kullanır, iş hatayla biterse unutur. Kalıcı WebView2 profili denendi, işe yaramadı: portalın giriş çerezi oturumluk, uygulama kapanınca siliniyor ve giriş ekranında "beni hatırla" yok. Yeniden açılışta giriş istenmesi bu yüzden beklenen davranış.
 

@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .superpowers/
 gecmis.json
+gunluk.txt*
 altin/
 duzeltmeler.json
 alanlar.json
