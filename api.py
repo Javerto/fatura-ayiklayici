@@ -11,6 +11,7 @@ Eski `gui.py`'nin tkinter'dan bağımsız tüm sorumlulukları buraya taşındı
 import base64
 import io
 import json
+import logging
 import os
 import pathlib
 import pickle
@@ -18,6 +19,7 @@ import queue
 import sys
 import threading
 import time
+import traceback
 
 import fitz
 import webview
@@ -48,9 +50,13 @@ else:
 ENV_DOSYASI      = _BASE / ".env"
 GECMIS_DOSYASI   = _BASE / "gecmis.json"
 DUZELTME_DOSYASI = _BASE / "duzeltmeler.json"
+GUNLUK_DOSYASI   = _BASE / "gunluk.txt"
 # Windows'un aygıt adları: uzantıyla bile (CON.xlsx) dosya olarak yazılamaz.
 AYRILMIS_ADLAR = {"CON", "PRN", "AUX", "NUL",
                   *(f"{a}{i}" for a in ("COM", "LPT") for i in range(1, 10))}
+
+# Kurulumu `main.gunluk_kur` yapar; testlerde dosyaya yazılmaz.
+gunluk = logging.getLogger("FaturaAyiklayici")
 
 ELOGO_PORTAL = "https://edevlet.elogo.com.tr"
 
@@ -239,7 +245,13 @@ class Api:
             # yazardı; geçersiz karakter / CON gibi ayrılmış ad ise ancak tüm
             # kota harcandıktan sonra, kaydetme anında patlıyordu.
             # os.path.isreserved 3.13+; README 3.11'i destekliyor, o yüzden elle.
-            ad = (ayarlar.get("cikti") or "faturalar").strip()
+            # Varsayılan yalnızca eksik ya da boş metin için: `or` kullanınca
+            # 0/False/[] de varsayılana düşüp reddedilmeden koşuyordu. Metin
+            # olmayan değer ise `.strip()`te JS'e ham hata olarak kaçıyordu.
+            ad = ayarlar.get("cikti")
+            if ad is None or ad == "":
+                ad = "faturalar"
+            ad = ad.strip() if isinstance(ad, str) else ""
             if (any(k in '<>:"/\\|?*' or ord(k) < 32 for k in ad)
                     or ad.strip(". ") == ""
                     or ad.split(".")[0].rstrip().upper() in AYRILMIS_ADLAR):
@@ -255,6 +267,8 @@ class Api:
             self._sema = s
 
             retry = ayarlar.get("retry") or None
+            gunluk.info("Koşu başladı: %s → %s (kalite %s%s)", klasor, cikti_adi,
+                        kalite, ", yeniden deneme" if retry else "")
             threading.Thread(
                 target=worker,
                 args=(api_key, klasor, cikti_adi, self._log_q, self._stop_event),
@@ -287,7 +301,10 @@ class Api:
         except ElogoHatasi as e:
             return {"hata": str(e)}
         except Exception as e:
-            # Yalnız tip adı: istisna metni oturum verisi taşıyabilir.
+            # Yalnız tip adı: istisna metni oturum verisi taşıyabilir. Günlüğe de
+            # metin değil, yalnızca hatanın geçtiği satırlar yazılır.
+            gunluk.error("eLogo penceresi açılamadı: %s\n%s", type(e).__name__,
+                         "".join(traceback.format_tb(e.__traceback__)))
             return {"hata": f"eLogo penceresi açılamadı ({type(e).__name__})."}
         finally:
             self._calisiyor = False
@@ -514,6 +531,7 @@ class Api:
             return {"hata": "Model okunabilir bir yanıt vermedi. Tekrar deneyin; "
                             "sürerse alan açıklamalarını sadeleştirin."}
         except Exception as e:
+            gunluk.exception("Deneme: beklenmedik hata (%s)", os.path.basename(yol))
             return {"hata": f"Beklenmedik hata — {type(e).__name__}: {e}"}
         degerler = satir_form_degerleri(satir, s)
         return {"dosya": fatura.dosya_adi(satir),
@@ -856,6 +874,7 @@ class Api:
             return {"png": base64.b64encode(pix.tobytes("png")).decode(),
                     "sayfa": sayfa, "toplam": n}
         except Exception as e:
+            gunluk.exception("Önizleme yüklenemedi")
             return {"hata": f"Önizleme yüklenemedi: {e}"}
 
     def deger_bul(self, i: int, alan: str, metin: str, sayfa: int = 0) -> dict:
@@ -873,6 +892,7 @@ class Api:
                 doc = self._pdf_belgesi(satir)
                 return (doc and pdf_deger_bul(doc, metinler, tam, int(sayfa))) or {}
         except Exception:
+            gunluk.exception("Değer vurgulanamadı")
             return {}          # vurgu yardımcı bir özellik; hatası ekranı bozmamalı
 
     def dosya_ac(self, i: int) -> bool:
@@ -923,6 +943,7 @@ class Api:
         except Exception as e:
             # Pompa ölürse terminal olay hiç gitmez ve arayüz sonsuza dek
             # "işleniyor"da kalır; kullanıcının tek çıkışı uygulamayı kapatmak.
+            gunluk.exception("Olay pompası çöktü")
             self._js("olaylar", [{"t": "bitti", "hata": f"Beklenmedik hata: {e}",
                                   "yazilan": 0, "atlanan": len(self._atlanmis),
                                   "cikti": self._mevcut_cikti()}])
@@ -945,13 +966,20 @@ class Api:
 
             gonderilecek = []
             for tag, veri in olaylar:
+                # Ekranda görünen sorunlar pencere kapanınca kaybolmasın.
+                if tag in ("critical", "warn", "atlandi"):
+                    gunluk.warning("%s: %s", tag, veri)
                 if tag == "elogo_ozet":
+                    gunluk.info("eLogo bitti: %s", {
+                        k: len(v) if isinstance(v, list) else v for k, v in veri.items()})
                     gonderilecek.append({"t": tag, "d": veri})
                     bitti = True
                 elif tag == "review":
                     # Satırlar Python'da kalır; arayüze yalnızca metin
                     # izdüşümü gider (datetime/float JSON'da tur atmasın).
                     self._review = veri
+                    gunluk.info("Koşu bitti: %d yeni fatura onay bekliyor, %d atlandı",
+                                len(veri["yeni"]), len(veri["atlanmis"]))
                     self._duzenlemeler = {}
                     self._haric = set()
                     self._excel_damga = _damga(veri["cikti"])
@@ -963,6 +991,7 @@ class Api:
                     bitti = True
                 elif tag == "done":
                     atlanmis, islenen, _uyarilar = veri
+                    gunluk.info("Koşu bitti: yeni fatura yok, %d atlandı", len(atlanmis))
                     self._atlanmis = atlanmis
                     self._gecmis_kaydet(islenen, len(atlanmis))
                     # Yeni fatura çıkmamış olabilir ama Excel önceki

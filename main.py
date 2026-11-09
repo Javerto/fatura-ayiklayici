@@ -8,13 +8,16 @@ Kullanım:
     python main.py
 """
 
+import logging
 import pathlib
 import sys
 import tempfile
+import threading
+from logging.handlers import RotatingFileHandler
 
 import webview
 
-from api import Api, EN_KUCUK_BOYUT, pencere_boyutu
+from api import Api, EN_KUCUK_BOYUT, GUNLUK_DOSYASI, gunluk, pencere_boyutu
 
 VERSION = "2.0"
 WEB_DOSYALARI = ("app.js", "editor.js", "index.html", "review.js",
@@ -50,6 +53,32 @@ def saglik_kontrolu() -> int:
     return 1 if sorunlar else 0
 
 
+def gunluk_kur(yol) -> None:
+    """Hataları `yol`a yazdırır; dosya açılamazsa sessizce vazgeçer.
+
+    `--windowed` EXE'nin konsolu yok: kullanıcıda olan hatanın izi başka hiçbir
+    yerde kalmıyor. Dosya 512 KB'de döner, bir eskisi (`.1`) saklanır.
+
+    Kök düzey WARNING'de kalır, yalnızca uygulamanın kaydedicisi INFO yazar:
+    kütüphanelerin INFO satırları (httpx her isteğin adresini yazar) girmesin.
+    Fatura içeriği günlüğe yazılmaz; dosya adı, klasör ve hata izi yazılır.
+    """
+    try:
+        dosya = RotatingFileHandler(yol, maxBytes=512_000, backupCount=1,
+                                    encoding="utf-8")
+    except OSError:
+        return          # salt okunur klasör: günlüksüz de açılsın
+    dosya.setFormatter(logging.Formatter(
+        "%(asctime)s %(levelname)s [%(threadName)s] %(message)s"))
+    logging.getLogger().addHandler(dosya)
+    gunluk.setLevel(logging.INFO)
+    sys.excepthook = lambda tip, hata, iz: gunluk.critical(
+        "Yakalanmamış hata", exc_info=(tip, hata, iz))
+    threading.excepthook = lambda a: gunluk.critical(
+        "Yakalanmamış thread hatası",
+        exc_info=(a.exc_type, a.exc_value, a.exc_traceback))
+
+
 def _webview2_uyarisi(hata: Exception):
     """WebView2 yoksa sessizce çökmek yerine ne yapılacağını anlat."""
     mesaj = (
@@ -72,6 +101,9 @@ def _webview2_uyarisi(hata: Exception):
 def main():
     if "--saglik" in sys.argv:
         raise SystemExit(saglik_kontrolu())
+    gunluk_kur(GUNLUK_DOSYASI)
+    gunluk.info("Açıldı: v%s%s", VERSION,
+                " (EXE)" if getattr(sys, "frozen", False) else "")
     api = Api()
     # Pencere referansı `_` önekiyle saklanmalı: pywebview, arayüze açacağı
     # API nesnesinin genel niteliklerine özyineleyerek girer (webview/util.py
@@ -90,6 +122,7 @@ def main():
     try:
         webview.start()
     except Exception as e:          # en sık nedeni: WebView2 kurulu değil
+        gunluk.exception("Pencere başlatılamadı")
         _webview2_uyarisi(e)
         raise SystemExit(1)
 

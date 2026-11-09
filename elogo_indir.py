@@ -1,9 +1,11 @@
 """eLogo'dan fatura indirme akışı (arayüzden bağımsız)."""
 
 import json
+import logging
 import os
 import pathlib
 import re
+import traceback
 import uuid
 
 from extraction import _duzelt_fatura_no, xml_den_veri_cek
@@ -224,6 +226,10 @@ def indir(nolar, gecersiz, klasor, istemci_al, log_q, stop_event):
         ozet["hata"] = str(e)
     except Exception as e:
         # Yalnız tip adı: istisna metni yanıt gövdesi ya da oturum verisi taşıyabilir.
+        # Günlüğe de metin değil, yalnızca hatanın geçtiği satırlar yazılır.
+        logging.getLogger("FaturaAyiklayici").error(
+            "eLogo indirme: %s\n%s", type(e).__name__,
+            "".join(traceback.format_tb(e.__traceback__)))
         ozet["hata"] = f"Beklenmedik hata: {type(e).__name__}"
     ozet["durduruldu"] = stop_event.is_set()
     if ozet["durduruldu"]:
